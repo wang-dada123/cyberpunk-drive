@@ -2,80 +2,176 @@ import { useEffect } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { carPose, carVisual } from './Car'
+import { isMobile } from '../utils/isMobile'
 
-/** Bruno Simon 式俯视追随：偏航重阻尼跟随车头（转弯不甩镜头），俯角 ~45°，距离 ~20m，可滚轮/双指缩放 */
-const PITCH = THREE.MathUtils.degToRad(45)
-const MIN_D = 12
-const MAX_D = 32
-let distance = 20
-let targetDistance = 20
+/**
+ * v3 三档相机（C 键 / 手机右上按钮循环）：third 追尾 → first 引擎盖 → top 45° 俯视。
+ * 全部帧率无关指数阻尼 1-exp(-k·dt)；三档状态每帧都更新，切换时 0.3s smoothstep 混合位置/朝向/FOV。
+ * useFrame 内零分配。车前向为局部 -Z。
+ */
+export type CamMode = 'third' | 'first' | 'top'
+const MODES: CamMode[] = ['third', 'first', 'top']
+export const camState = { mode: 'third' as CamMode }
 
-// 模块级复用，useFrame 内零分配
-const _pos = new THREE.Vector3()
-const _q = new THREE.Quaternion()
-const _s = new THREE.Vector3()
-const _target = new THREE.Vector3()
-const _dir = new THREE.Vector3()
+// —— 通用 ——
+const TRANSITION = 0.3
+const MAX_ACCEL = 60          // 跟随目标加速度上限 m/s²
+const K_TARGET = 6            // 车位置低通
+const K_VEL = 2.5             // 速度向量阻尼
+const K_ZOOM = 5              // 缩放阻尼
+// —— 第三人称 ——
+const T_BACK = 8, T_HEIGHT = 3, T_SPEED_EXTRA = 2, T_SPEED_REF = 30 // m, m, m, m/s
+const T_K_POS = 4, T_K_YAW = 2.5, T_FOV = 60
+const T_LOOK_AHEAD = 4, T_LOOK_H = 1.0
+const T_MIN = 5, T_MAX = 14
+// —— 第一人称 ——
+const F_OFFSET = new THREE.Vector3(0, 1.1, -0.6) // 车局部：上 1.1m、前 0.6m
+const F_LOOK_DIST = 20, F_K_YAW = 8, F_FOV = 72, F_FOV_EXTRA = 6, F_K_FOV = 3
+// —— 俯视 ——
+const P_PITCH = THREE.MathUtils.degToRad(45), P_K_POS = 3.5, P_K_LOOK = 4, P_FOV = 50
+const P_LOOKAHEAD_T = 0.25, P_LOOKAHEAD_MAX = 3, P_MIN = 12, P_MAX = 32
+// —— 输入 ——
+const WHEEL_K_TOP = 0.005, WHEEL_K_THIRD = 0.002, WHEEL_STEP_MAX = 2, PINCH_K = 0.5
+
+let topDist = 20, topDistT = 20, thirdExtra = 0, thirdExtraT = 0 // thirdExtra: 用户缩放偏移
+const _pos = new THREE.Vector3(), _q = new THREE.Quaternion(), _s = new THREE.Vector3()
 const _e = new THREE.Euler(0, 0, 0, 'YXZ')
-let yaw = 0 // 镜头偏航：重阻尼跟随车头，转弯不甩
-let inited = false
+const _filt = new THREE.Vector3(), _prevFilt = new THREE.Vector3()
+const _vel = new THREE.Vector3(), _rawVel = new THREE.Vector3()
+const _focus = new THREE.Vector3(), _focusVel = new THREE.Vector3(), _goal = new THREE.Vector3(), _dv = new THREE.Vector3()
+const _tmp = new THREE.Vector3(), _m = new THREE.Matrix4(), _up = new THREE.Vector3(0, 1, 0)
+const _topDir = new THREE.Vector3(0, Math.sin(P_PITCH), Math.cos(P_PITCH))
+// 每档输出
+type Pose = { pos: THREE.Vector3; look: THREE.Vector3; quat: THREE.Quaternion; fov: number }
+const mk = (fov: number): Pose => ({ pos: new THREE.Vector3(), look: new THREE.Vector3(), quat: new THREE.Quaternion(), fov })
+const third = mk(T_FOV), first = mk(F_FOV), top = mk(P_FOV), from = mk(T_FOV)
+const poses: Record<CamMode, Pose> = { third, first, top }
+let tYaw = 0, fYaw = 0, transT = 1, inited = false
 
-function useZoomInput() {
+const damp = (k: number, dt: number) => 1 - Math.exp(-k * dt)
+const clamp = THREE.MathUtils.clamp
+const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a))
+
+function cycle(camera: THREE.PerspectiveCamera) {
+  from.pos.copy(camera.position); from.quat.copy(camera.quaternion); from.fov = camera.fov
+  camState.mode = MODES[(MODES.indexOf(camState.mode) + 1) % MODES.length]
+  transT = 0
+}
+
+function useCamInput(camera: THREE.PerspectiveCamera) {
   useEffect(() => {
-    const clamp = (v: number) => Math.min(MAX_D, Math.max(MIN_D, v))
-    const wheel = (e: WheelEvent) => { targetDistance = clamp(targetDistance * Math.exp(e.deltaY * 0.001)) }
-    let pinch0 = 0, d0 = 0
+    const zoom = (d: number) => { // d: 正=拉远（米，按档位系数换算后）
+      if (camState.mode === 'top') topDistT = clamp(topDistT + d, P_MIN, P_MAX)
+      else if (camState.mode === 'third') thirdExtraT = clamp(thirdExtraT + d, T_MIN - T_BACK, T_MAX - T_BACK)
+    }
+    const wheel = (e: WheelEvent) => {
+      const k = camState.mode === 'top' ? WHEEL_K_TOP : WHEEL_K_THIRD
+      zoom(clamp(e.deltaY * k, -WHEEL_STEP_MAX, WHEEL_STEP_MAX))
+    }
+    const key = (e: KeyboardEvent) => { if (e.code === 'KeyC' && !e.repeat) cycle(camera) }
+    let pinch0 = 0, last = 0
     const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
-    const ts = (e: TouchEvent) => { if (e.touches.length === 2) { pinch0 = dist(e.touches); d0 = targetDistance } }
-    const tm = (e: TouchEvent) => { if (e.touches.length === 2 && pinch0 > 0) targetDistance = clamp(d0 * (pinch0 / dist(e.touches))) }
+    const ts = (e: TouchEvent) => { if (e.touches.length === 2) { pinch0 = last = dist(e.touches) } }
+    const tm = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || pinch0 <= 0) return
+      const d = dist(e.touches), ratio = last / Math.max(1, d); last = d
+      const base = camState.mode === 'top' ? topDistT : T_BACK + thirdExtraT
+      zoom(base * (Math.pow(ratio, PINCH_K) - 1))
+    }
     const te = (e: TouchEvent) => { if (e.touches.length < 2) pinch0 = 0 }
+    let btn: HTMLButtonElement | null = null
+    if (isMobile) {
+      btn = document.createElement('button')
+      btn.textContent = '🎥'
+      btn.setAttribute('aria-label', '切换视角')
+      Object.assign(btn.style, { position: 'fixed', top: '12px', right: '12px', zIndex: '20', width: '44px', height: '44px',
+        borderRadius: '10px', border: '1px solid #5fd4ff', background: 'rgba(8,16,28,0.7)', color: '#bfeaff', fontSize: '20px' })
+      btn.addEventListener('click', () => cycle(camera))
+      document.body.appendChild(btn)
+    }
     window.addEventListener('wheel', wheel, { passive: true })
+    window.addEventListener('keydown', key)
     window.addEventListener('touchstart', ts, { passive: true })
     window.addEventListener('touchmove', tm, { passive: true })
     window.addEventListener('touchend', te, { passive: true })
     return () => {
-      window.removeEventListener('wheel', wheel)
-      window.removeEventListener('touchstart', ts)
-      window.removeEventListener('touchmove', tm)
-      window.removeEventListener('touchend', te)
+      btn?.remove()
+      window.removeEventListener('wheel', wheel); window.removeEventListener('keydown', key)
+      window.removeEventListener('touchstart', ts); window.removeEventListener('touchmove', tm); window.removeEventListener('touchend', te)
     }
-  }, [])
+  }, [camera])
 }
 
-/**
- * 读取 rapier 插值后的可视对象位置（避免物理/渲染不同步抖动），
- * 帧率无关阻尼 1-exp(-k·dt)，120/144Hz 下一致。挂在 <Physics> 之后。
- */
+const lookQuat = (p: Pose) => { _m.lookAt(p.pos, p.look, _up); p.quat.setFromRotationMatrix(_m) }
+
 export function FollowCamera() {
   const { camera, scene } = useThree()
-  useZoomInput()
+  const cam = camera as THREE.PerspectiveCamera
+  useCamInput(cam)
   useFrame((_, rawDt) => {
-    // 仅开发截图：window.__topdown = true → 正上方俯视全图
     if (import.meta.env.DEV && (window as unknown as { __topdown?: boolean }).__topdown) {
-      camera.position.set(0, 330, 0.01); camera.lookAt(0, 0, 0)
+      cam.position.set(0, 330, 0.01); cam.lookAt(0, 0, 0)
       if (scene.fog) (scene.fog as THREE.FogExp2).density = 0.0006
-      ;(camera as THREE.PerspectiveCamera).far = 800; (camera as THREE.PerspectiveCamera).updateProjectionMatrix()
-      return
+      cam.far = 800; cam.updateProjectionMatrix(); return
     }
     const dt = Math.min(rawDt, 0.1)
+    if (dt <= 0) return
     const obj = carVisual.current
-    if (obj) {
-      obj.updateWorldMatrix(true, false)
-      obj.matrixWorld.decompose(_pos, _q, _s)
-    } else { _pos.copy(carPose.position); _q.copy(carPose.quaternion) }
-    const carYaw = _e.setFromQuaternion(_q, 'YXZ').y
-    let dy = carYaw - yaw
-    dy = Math.atan2(Math.sin(dy), Math.cos(dy))
-    yaw += dy * (1 - Math.exp(-2.2 * dt))
-    _dir.set(Math.cos(PITCH) * Math.sin(yaw), Math.sin(PITCH), Math.cos(PITCH) * Math.cos(yaw))
-    _pos.y = 0.5
+    if (obj) { obj.updateWorldMatrix(true, false); obj.matrixWorld.decompose(_pos, _q, _s) }
+    else { _pos.copy(carPose.position); _q.copy(carPose.quaternion) }
+    const carYaw = _e.setFromQuaternion(_q, 'YXZ').y // 只取 yaw，忽略 pitch/roll
 
-    distance += (targetDistance - distance) * (1 - Math.exp(-8 * dt))
-    if (!inited) { _target.copy(_pos); yaw = carYaw; inited = true }
-    else _target.lerp(_pos, 1 - Math.exp(-10 * dt))
+    if (!inited) {
+      _filt.copy(_pos); _prevFilt.copy(_pos); _focus.copy(_pos); tYaw = fYaw = carYaw
+      inited = true
+    }
+    // 共用：低通位置、平滑速度、加速度 clamp 的跟随点
+    _filt.lerp(_pos, damp(K_TARGET, dt))
+    _rawVel.subVectors(_filt, _prevFilt).divideScalar(dt); _rawVel.y = 0; _prevFilt.copy(_filt)
+    _vel.lerp(_rawVel, damp(K_VEL, dt))
+    const speed = _vel.length()
+    _goal.copy(_vel).multiplyScalar(P_LOOKAHEAD_T).clampLength(0, P_LOOKAHEAD_MAX).add(_filt)
+    _dv.subVectors(_goal, _focus).divideScalar(dt).sub(_focusVel).clampLength(0, MAX_ACCEL * dt)
+    _focusVel.add(_dv); _focus.addScaledVector(_focusVel, dt)
 
-    camera.position.copy(_dir).multiplyScalar(distance).add(_target)
-    camera.lookAt(_target)
+    // 第三人称：朝向用平滑速度方向（倒车/低速用车头）
+    const headYaw = speed > 2 && _vel.dot(_tmp.set(-Math.sin(carYaw), 0, -Math.cos(carYaw))) > 0
+      ? Math.atan2(-_vel.x, -_vel.z) : carYaw
+    tYaw += wrap(headYaw - tYaw) * damp(T_K_YAW, dt)
+    thirdExtra += (thirdExtraT - thirdExtra) * damp(K_ZOOM, dt)
+    const back = T_BACK + thirdExtra + T_SPEED_EXTRA * Math.min(1, speed / T_SPEED_REF)
+    _tmp.set(Math.sin(tYaw) * back, T_HEIGHT, Math.cos(tYaw) * back).add(_focus)
+    third.pos.lerp(_tmp, damp(T_K_POS, dt))
+    third.look.set(-Math.sin(tYaw) * T_LOOK_AHEAD, T_LOOK_H, -Math.cos(tYaw) * T_LOOK_AHEAD).add(_focus)
+    lookQuat(third)
+
+    // 第一人称：刚性挂车（插值后位置），朝向只用平滑 yaw
+    fYaw += wrap(carYaw - fYaw) * damp(F_K_YAW, dt)
+    const sy = Math.sin(fYaw), cy = Math.cos(fYaw)
+    first.pos.set(_pos.x + F_OFFSET.x * cy + F_OFFSET.z * sy, _pos.y + F_OFFSET.y, _pos.z - F_OFFSET.x * sy + F_OFFSET.z * cy)
+    first.look.set(first.pos.x - sy * F_LOOK_DIST, first.pos.y - 0.6, first.pos.z - cy * F_LOOK_DIST)
+    lookQuat(first)
+    first.fov += (F_FOV + F_FOV_EXTRA * Math.min(1, speed / T_SPEED_REF) - first.fov) * damp(F_K_FOV, dt)
+
+    // 俯视：固定朝向只平移
+    topDist += (topDistT - topDist) * damp(K_ZOOM, dt)
+    _tmp.copy(_topDir).multiplyScalar(topDist).add(_focus); _tmp.y += 0.5
+    top.pos.lerp(_tmp, damp(P_K_POS, dt))
+    _tmp.copy(_focus); _tmp.y = 0.5
+    top.look.lerp(_tmp, damp(P_K_LOOK, dt))
+    lookQuat(top)
+
+    // 输出 + 切换过渡
+    const p = poses[camState.mode]
+    let fov = p.fov
+    if (transT < 1) {
+      transT = Math.min(1, transT + dt / TRANSITION)
+      const s = transT * transT * (3 - 2 * transT)
+      cam.position.lerpVectors(from.pos, p.pos, s)
+      cam.quaternion.slerpQuaternions(from.quat, p.quat, s)
+      fov = from.fov + (p.fov - from.fov) * s
+    } else { cam.position.copy(p.pos); cam.quaternion.copy(p.quat) }
+    if (Math.abs(cam.fov - fov) > 0.01) { cam.fov = fov; cam.updateProjectionMatrix() }
   })
   return null
 }

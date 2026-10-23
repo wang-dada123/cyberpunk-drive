@@ -1,11 +1,13 @@
 import { Suspense, useState } from 'react'
-import { PerformanceMonitor, StatsGl } from '@react-three/drei'
+import { PerformanceMonitor } from '@react-three/drei'
+import { PerfOverlay } from './PerfOverlay'
 import { DEBUG } from '../utils/quality'
 import { Canvas } from '@react-three/fiber'
 import { Physics } from '@react-three/rapier'
 import { EffectComposer, Bloom } from '@react-three/postprocessing'
 import { colors, bloom, fogDensity, districts } from '../theme/colors'
 import { City } from './City'
+import { StaticBatch } from './StaticBatch'
 import { Car } from './Car'
 import { FollowCamera } from './FollowCamera'
 import { DistrictAtmosphere } from './DistrictAtmosphere'
@@ -38,8 +40,9 @@ export function Scene() {
   return (
     <Canvas
       dpr={dpr}
-      camera={{ position: [0, 6, 12], fov: 50, near: 0.5, far: 260 }}
+      camera={{ position: [0, 6, 12], fov: 50, near: 0.5, far: 170 }}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
+      onCreated={({ gl }) => { if (import.meta.env.DEV || DEBUG) (window as unknown as { __gl?: unknown }).__gl = gl }}
       style={{ width: '100%', height: '100%', background: colors.bg }}
     >
       {/* FPS 低时自动降 DPR（只在跨阈值时 setState，非每帧） */}
@@ -47,13 +50,13 @@ export function Scene() {
         onDecline={() => setDpr((d) => Math.max(0.75, +(d - 0.25).toFixed(2)))}
         onIncline={() => setDpr((d) => Math.min(MAX_DPR, +(d + 0.25).toFixed(2)))}
       />
-      {DEBUG && <StatsGl className="stats-gl" />}
+      {DEBUG && <PerfOverlay />}
       <color attach="background" args={[colors.bg]} />
       <fogExp2 attach="fog" args={[colors.fog, fogDensity]} />
       <Lights />
       <Suspense fallback={null}>
         <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60} interpolate>
-          <City />
+          <StaticBatch><City /></StaticBatch>
           <Car />
         </Physics>
         <FollowCamera />
