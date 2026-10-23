@@ -62,7 +62,7 @@ export function Scene() {
       <fogExp2 attach="fog" args={[colors.fog, fogDensity]} />
       <Lights />
       <Suspense fallback={null}>
-        <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60} interpolate updatePriority={-50}>
+        <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60} interpolate={false} updatePriority={-50}>
           <StaticBatch><City /></StaticBatch>
           <Car />
         </Physics>

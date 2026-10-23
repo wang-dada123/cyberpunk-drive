@@ -1,6 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
+import * as THREE from 'three'
 import { rendererInfo } from '../utils/rendererCheck'
+import { carVisual, physStats } from './Car'
+import { camState, camStats } from './FollowCamera'
 
 /**
  * ?debug 性能面板（右下角）：fps、1% low、平均/5s 最大帧时间、帧时间曲线、刷新率估计、
@@ -10,7 +13,10 @@ import { rendererInfo } from '../utils/rendererCheck'
  */
 const N = 1024, G = 240
 const frameMs = new Float32Array(N), stamp = new Float64Array(N), sorted = new Float32Array(N)
-let head = 0, filled = 0, acc = 0
+const carSpd = new Float32Array(N), steps = new Uint8Array(N)
+const _cp = new THREE.Vector3(), _lp = new THREE.Vector3()
+let head = 0, filled = 0, acc = 0, hasLp = false
+const COMMON_HZ = [60, 75, 90, 100, 120, 144, 165, 240]
 export const perfStats = { calls: 0, triangles: 0, programs: 0, fps: 0, low1: 0, max5s: 0, hz: 0 }
 
 export function PerfOverlay() {
@@ -20,11 +26,11 @@ export function PerfOverlay() {
   useEffect(() => {
     gl.info.autoReset = false
     const box = document.createElement('div')
-    Object.assign(box.style, { position: 'fixed', right: '8px', bottom: '8px', zIndex: '30', width: '260px', height: '150px',
+    Object.assign(box.style, { position: 'fixed', right: '8px', bottom: '8px', zIndex: '30', width: '260px', height: '230px',
       contain: 'strict', background: 'rgba(2,6,12,0.78)', color: '#9fe6ff', font: '11px/1.35 monospace',
       padding: '6px 8px', border: '1px solid #1f5f7a', pointerEvents: 'none', boxSizing: 'border-box', overflow: 'hidden' })
     const t = document.createElement('div'); t.style.whiteSpace = 'pre'
-    const c = document.createElement('canvas'); c.width = G; c.height = 40
+    const c = document.createElement('canvas'); c.width = G; c.height = 100
     box.append(t, c); document.body.appendChild(box)
     txt.current = t; cv.current = c
     return () => { box.remove(); gl.info.autoReset = true }
@@ -34,6 +40,13 @@ export function PerfOverlay() {
     perfStats.calls = gl.info.render.calls
     perfStats.triangles = gl.info.render.triangles
     const now = performance.now()
+    // 每帧车可视体位移 |Δpos|/dt（匀速应为平线）+ 本帧物理步数
+    if (carVisual.current) {
+      carVisual.current.getWorldPosition(_cp)
+      carSpd[head] = hasLp && dt > 0 ? _cp.distanceTo(_lp) / dt : 0
+      _lp.copy(_cp); hasLp = true
+    }
+    steps[head] = physStats.stepsThisFrame
     frameMs[head] = dt * 1000; stamp[head] = now; head = (head + 1) % N; filled = Math.min(N, filled + 1)
     acc += dt
     if (acc < 0.5 || !txt.current || !cv.current) return
@@ -54,9 +67,12 @@ export function PerfOverlay() {
       `avg ${(sum / n).toFixed(2)}ms  max5s ${mx.toFixed(1)}ms\n` +
       `刷新率≈${perfStats.hz.toFixed(0)}Hz (中位帧)\n` +
       `calls ${perfStats.calls}  tris ${(perfStats.triangles / 1000).toFixed(1)}k  prog ${perfStats.programs}\n` +
-      rendererInfo.name.slice(0, 40)
+      rendererInfo.name.slice(0, 40) + '\n' +
+      (COMMON_HZ.some((h) => Math.abs(perfStats.hz - h) / h < 0.04) ? '' : '⚠ 刷新率非常见值，可能被效率模式限帧\n') +
+      `视角 ${camState.mode} 切档${camStats.switches}次 来源:${camStats.lastSource} NaN:${camStats.nan}\n` +
+      `车速曲线(绿,m/s) 物理步/帧(橙)`
     const g = cv.current.getContext('2d')!
-    g.clearRect(0, 0, G, 40)
+    g.clearRect(0, 0, G, 100)
     g.strokeStyle = '#2a6f8a'; g.beginPath(); g.moveTo(0, 40 - 16.7); g.lineTo(G, 40 - 16.7); g.stroke()
     g.strokeStyle = '#9fe6ff'; g.beginPath()
     const m = Math.min(G, filled)
@@ -65,6 +81,16 @@ export function PerfOverlay() {
       if (k === 0) g.moveTo(k, y); else g.lineTo(k, y)
     }
     g.stroke()
+    let smax = 1
+    for (let k = 0; k < m; k++) smax = Math.max(smax, carSpd[(head - m + k + N) % N])
+    g.strokeStyle = '#6f6'; g.beginPath()
+    for (let k = 0; k < m; k++) {
+      const y = 85 - 40 * carSpd[(head - m + k + N) % N] / smax
+      if (k === 0) g.moveTo(k, y); else g.lineTo(k, y)
+    }
+    g.stroke()
+    g.fillStyle = '#fa4'
+    for (let k = 0; k < m; k++) { const st = steps[(head - m + k + N) % N]; g.fillRect(k, 100 - st * 5, 1, st * 5) }
   }, 1000)
   return null
 }

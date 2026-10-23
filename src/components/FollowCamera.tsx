@@ -51,10 +51,33 @@ const damp = (k: number, dt: number) => 1 - Math.exp(-k * dt)
 const clamp = THREE.MathUtils.clamp
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a))
 
-function cycle(camera: THREE.PerspectiveCamera) {
+export const camStats = { switches: 0, lastSource: '-' as string, nan: 0, transT: 1 }
+let lastSwitch = -1e9, useVelHead = false
+const MODE_NAME: Record<CamMode, string> = { third: '第三人称', first: '第一人称', top: '俯视' }
+let hintEl: HTMLDivElement | null = null, hintTimer = 0
+function showHint() {
+  if (!hintEl) {
+    hintEl = document.createElement('div')
+    Object.assign(hintEl.style, { position: 'fixed', top: '12px', left: '50%', transform: 'translateX(-50%)', zIndex: '20',
+      padding: '6px 12px', borderRadius: '8px', background: 'rgba(8,16,28,0.7)', color: '#bfeaff', font: '13px system-ui',
+      border: '1px solid #5fd4ff', pointerEvents: 'none', transition: 'opacity .3s', opacity: '0' })
+    document.body.appendChild(hintEl)
+  }
+  hintEl.textContent = `视角：${MODE_NAME[camState.mode]} · ${isMobile ? '点 🎥' : '按 C'} 切换`
+  hintEl.style.opacity = '1'
+  clearTimeout(hintTimer); hintTimer = window.setTimeout(() => { if (hintEl) hintEl.style.opacity = '0' }, 1500)
+}
+
+function cycle(camera: THREE.PerspectiveCamera, source = 'key') {
+  const now = performance.now()
+  if (now - lastSwitch < 250) return // 250ms 防抖
+  lastSwitch = now
+  camStats.switches++; camStats.lastSource = source
+  // 快照相机当前实际位姿（若正在过渡中也是当前插值结果），从这里插到新档
   from.pos.copy(camera.position); from.quat.copy(camera.quaternion); from.fov = camera.fov
   camState.mode = MODES[(MODES.indexOf(camState.mode) + 1) % MODES.length]
   transT = 0
+  showHint()
 }
 
 function useCamInput(camera: THREE.PerspectiveCamera) {
@@ -85,7 +108,7 @@ function useCamInput(camera: THREE.PerspectiveCamera) {
       btn.setAttribute('aria-label', '切换视角')
       Object.assign(btn.style, { position: 'fixed', top: '12px', right: '12px', zIndex: '20', width: '44px', height: '44px',
         borderRadius: '10px', border: '1px solid #5fd4ff', background: 'rgba(8,16,28,0.7)', color: '#bfeaff', fontSize: '20px' })
-      btn.addEventListener('click', () => cycle(camera))
+      btn.addEventListener('pointerup', (e) => { e.preventDefault(); cycle(camera, 'button'); btn?.blur() })
       document.body.appendChild(btn)
     }
     window.addEventListener('wheel', wheel, { passive: true })
@@ -94,7 +117,7 @@ function useCamInput(camera: THREE.PerspectiveCamera) {
     window.addEventListener('touchmove', tm, { passive: true })
     window.addEventListener('touchend', te, { passive: true })
     return () => {
-      btn?.remove()
+      btn?.remove(); hintEl?.remove(); hintEl = null
       window.removeEventListener('wheel', wheel); window.removeEventListener('keydown', key)
       window.removeEventListener('touchstart', ts); window.removeEventListener('touchmove', tm); window.removeEventListener('touchend', te)
     }
@@ -127,7 +150,9 @@ export function FollowCamera() {
     }
     // 共用：直接用插值后位置（不再额外低通，只保留镜头一层阻尼）、平滑速度、加速度 clamp 的跟随点
     _filt.copy(_pos)
-    _rawVel.subVectors(_filt, _prevFilt).divideScalar(Math.min(rawDt, 0.25)); // 速度用真实帧间隔，否则位移/时间不匹配 _rawVel.y = 0; _prevFilt.copy(_filt)
+    _rawVel.subVectors(_filt, _prevFilt).divideScalar(Math.min(rawDt, 0.25)) // 速度用真实帧间隔
+    _rawVel.y = 0; _prevFilt.copy(_filt) // 修复：此前这两句被注释吞掉，_prevFilt 从不更新
+    if (!Number.isFinite(_rawVel.x + _rawVel.z)) { _rawVel.set(0, 0, 0); camStats.nan++ }
     _vel.lerp(_rawVel, damp(K_VEL, dt))
     const speed = _vel.length()
     _goal.copy(_vel).multiplyScalar(P_LOOKAHEAD_T).clampLength(0, P_LOOKAHEAD_MAX).add(_filt)
@@ -135,8 +160,12 @@ export function FollowCamera() {
     _focusVel.add(_dv); _focus.addScaledVector(_focusVel, dt)
 
     // 第三人称：朝向用平滑速度方向（倒车/低速用车头）
-    const headYaw = speed > 2 && _vel.dot(_tmp.set(-Math.sin(carYaw), 0, -Math.cos(carYaw))) > 0
-      ? Math.atan2(-_vel.x, -_vel.z) : carYaw
+    // 迟滞：<1.5 m/s 用车头，>3 m/s 才切回速度方向；两者间平滑混合（tYaw 阻尼）
+    const fwdOk = _vel.dot(_tmp.set(-Math.sin(carYaw), 0, -Math.cos(carYaw))) > 0
+    if (useVelHead && (speed < 1.5 || !fwdOk)) useVelHead = false
+    else if (!useVelHead && speed > 3 && fwdOk) useVelHead = true
+    let headYaw = useVelHead && speed > 1e-3 ? Math.atan2(-_vel.x, -_vel.z) : carYaw
+    if (!Number.isFinite(headYaw)) { headYaw = tYaw; camStats.nan++ }
     tYaw += wrap(headYaw - tYaw) * damp(T_K_YAW, dt)
     thirdExtra += (thirdExtraT - thirdExtra) * damp(K_ZOOM, dt)
     const back = T_BACK + thirdExtra + T_SPEED_EXTRA * Math.min(1, speed / T_SPEED_REF)
@@ -171,6 +200,10 @@ export function FollowCamera() {
       cam.quaternion.slerpQuaternions(from.quat, p.quat, s)
       fov = from.fov + (p.fov - from.fov) * s
     } else { cam.position.copy(p.pos); cam.quaternion.copy(p.quat) }
+    camStats.transT = transT
+    if (!Number.isFinite(cam.position.x + cam.position.y + cam.position.z + cam.quaternion.w)) {
+      cam.position.copy(from.pos); cam.quaternion.copy(from.quat); camStats.nan++; inited = false
+    }
     if (Math.abs(cam.fov - fov) > 0.01) { cam.fov = fov; cam.updateProjectionMatrix() }
   })
   return null
