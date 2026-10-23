@@ -15,8 +15,7 @@ export const camState = { mode: 'third' as CamMode }
 
 // —— 通用 ——
 const TRANSITION = 0.3
-const MAX_ACCEL = 60          // 跟随目标加速度上限 m/s²
-const K_TARGET = 6            // 车位置低通
+const MAX_ACCEL = 250         // 跟随点加速度上限 m/s²：正常行驶/转弯(<~60)不触发，仅碰撞/急停瞬变
 const K_VEL = 2.5             // 速度向量阻尼
 const K_ZOOM = 5              // 缩放阻尼
 // —— 第三人称 ——
@@ -108,13 +107,14 @@ export function FollowCamera() {
   const { camera, scene } = useThree()
   const cam = camera as THREE.PerspectiveCamera
   useCamInput(cam)
+  // priority 0：在 Physics(-50，写入插值后 mesh 位姿) 之后、EffectComposer(1，渲染) 之前
   useFrame((_, rawDt) => {
     if (import.meta.env.DEV && (window as unknown as { __topdown?: boolean }).__topdown) {
       cam.position.set(0, 330, 0.01); cam.lookAt(0, 0, 0)
       if (scene.fog) (scene.fog as THREE.FogExp2).density = 0.0006
       cam.far = 800; cam.updateProjectionMatrix(); return
     }
-    const dt = Math.min(rawDt, 0.1)
+    const dt = clamp(rawDt, 0, 0.05)
     if (dt <= 0) return
     const obj = carVisual.current
     if (obj) { obj.updateWorldMatrix(true, false); obj.matrixWorld.decompose(_pos, _q, _s) }
@@ -125,9 +125,9 @@ export function FollowCamera() {
       _filt.copy(_pos); _prevFilt.copy(_pos); _focus.copy(_pos); tYaw = fYaw = carYaw
       inited = true
     }
-    // 共用：低通位置、平滑速度、加速度 clamp 的跟随点
-    _filt.lerp(_pos, damp(K_TARGET, dt))
-    _rawVel.subVectors(_filt, _prevFilt).divideScalar(dt); _rawVel.y = 0; _prevFilt.copy(_filt)
+    // 共用：直接用插值后位置（不再额外低通，只保留镜头一层阻尼）、平滑速度、加速度 clamp 的跟随点
+    _filt.copy(_pos)
+    _rawVel.subVectors(_filt, _prevFilt).divideScalar(Math.min(rawDt, 0.25)); // 速度用真实帧间隔，否则位移/时间不匹配 _rawVel.y = 0; _prevFilt.copy(_filt)
     _vel.lerp(_rawVel, damp(K_VEL, dt))
     const speed = _vel.length()
     _goal.copy(_vel).multiplyScalar(P_LOOKAHEAD_T).clampLength(0, P_LOOKAHEAD_MAX).add(_filt)

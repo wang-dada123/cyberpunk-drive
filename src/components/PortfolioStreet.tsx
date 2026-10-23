@@ -119,10 +119,10 @@ export function PortfolioStreet() {
     const { x, z } = carPose.position
     let hit: number | null = null
     let best = RING_R * RING_R
-    worldRings.forEach((v, i) => {
-      const d = (v.x - x) ** 2 + (v.z - z) ** 2
+    for (let i = 0; i < worldRings.length; i++) {
+      const v = worldRings[i], d = (v.x - x) ** 2 + (v.z - z) ** 2
       if (d < best) { best = d; hit = i }
-    })
+    }
     setActive(hit)
   })
   return <group>{slots.map((s, i) => <Board key={s.p.id + i} slot={s} idx={i} />)}</group>

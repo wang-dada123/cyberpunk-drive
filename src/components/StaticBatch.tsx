@@ -8,14 +8,13 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
  *  - 普通 Mesh：按「材质 + 几何属性签名 + 街区块(CHUNK m)」分组 mergeGeometries，烘入世界矩阵
  *  - InstancedMesh：按街区块拆成多个 InstancedMesh（各自 boundingSphere → 视锥剔除生效）
  *  - 原物体 visible=false（碰撞体不受影响），新物体 matrixAutoUpdate=false
- *  - troika Text 不能合批：保留，超过 TEXT_FAR 米隐藏（每 0.25s 检查）
- *  - 完成后 gl.compile(scene, camera) 预编译着色器（三档相机共用同一套材质）
+ *  - troika Text 不能合批：保留且常驻可见（不切 visible，避免重新可见时上传/编译尖峰），靠 far+雾+视锥剔除
+ *  - 完成后 gl.compile(scene, camera) 预编译着色器 + initTexture 预上传全部纹理（三档相机共用材质）
  * 标记 userData.dynamic 的物体及其子树跳过。
  */
 export const CHUNK = 60      // 普通网格合批块
 export const INST_CHUNK = 175 // 实例拆块（太细会增加 draw call）
 export const INST_SPLIT_MIN = 48
-export const TEXT_FAR = 85
 export const batchStats = { meshesIn: 0, mergedOut: 0, instIn: 0, instOut: 0, texts: 0 }
 
 const _v = new THREE.Vector3()
@@ -33,14 +32,14 @@ export function StaticBatch({ children }: { children: ReactNode }) {
   const { gl, scene, camera } = useThree()
   const frames = useRef(0)
   const done = useRef(false)
-  const texts = useRef<{ o: THREE.Object3D; p: THREE.Vector3 }[]>([])
+  const texts = useRef(0)
   const out = useRef<THREE.Group | null>(null)
-  const tAcc = useRef(0)
 
   useEffect(() => () => { if (out.current) { out.current.removeFromParent(); out.current.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).geometry.dispose() }) } }, [])
 
-  useFrame((_, dt) => {
-    if (!done.current) {
+  useFrame(() => {
+    if (done.current) return
+    {
       if (++frames.current < 3 || !root.current) return
       done.current = true
       const r = root.current
@@ -49,7 +48,7 @@ export function StaticBatch({ children }: { children: ReactNode }) {
       const insts: THREE.InstancedMesh[] = []
       const skip = (o: THREE.Object3D) => { for (let p: THREE.Object3D | null = o; p && p !== r; p = p.parent) if (p.userData.dynamic || !p.visible) return true; return false }
       r.traverse((o) => {
-        if (isText(o)) { o.updateWorldMatrix(true, false); texts.current.push({ o, p: new THREE.Vector3().setFromMatrixPosition(o.matrixWorld) }); return }
+        if (isText(o)) { texts.current++; return }
         const mesh = o as THREE.Mesh
         if (!mesh.isMesh || skip(o) || Array.isArray(mesh.material)) return
         if ((mesh as THREE.InstancedMesh).isInstancedMesh) { insts.push(mesh as THREE.InstancedMesh); return }
@@ -63,7 +62,7 @@ export function StaticBatch({ children }: { children: ReactNode }) {
         e.geos.push(g.clone().applyMatrix4(mesh.matrixWorld)); e.srcs.push(mesh)
       })
       const holder = new THREE.Group(); holder.name = 'static-batch'
-      batchStats.texts = texts.current.length
+      batchStats.texts = texts.current
       groups.forEach((e) => {
         batchStats.meshesIn += e.srcs.length
         if (e.srcs.length < 2) { e.geos[0].dispose(); return }
@@ -102,15 +101,15 @@ export function StaticBatch({ children }: { children: ReactNode }) {
         im.visible = false
       })
       scene.add(holder); out.current = holder
-      gl.compile(scene, camera) // 预编译，避免首次切视角/进新街区卡顿
+      gl.compile(scene, camera) // 预编译（compile 不做视锥剔除，所有块都覆盖）
+      scene.traverse((o) => {
+        const mat = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined
+        if (!mat) return
+        for (const mm of Array.isArray(mat) ? mat : [mat]) for (const v of Object.values(mm)) if ((v as THREE.Texture)?.isTexture) gl.initTexture(v as THREE.Texture)
+      })
       if (import.meta.env.DEV) console.info('[StaticBatch]', JSON.stringify(batchStats))
       return
     }
-    tAcc.current += dt
-    if (tAcc.current < 0.25) return
-    tAcc.current = 0
-    const far2 = TEXT_FAR * TEXT_FAR, cp = camera.position
-    for (const t of texts.current) t.o.visible = t.p.distanceToSquared(cp) < far2
   })
   return <group ref={root}>{children}</group>
 }

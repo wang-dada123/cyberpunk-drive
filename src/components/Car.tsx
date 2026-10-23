@@ -85,7 +85,7 @@ export function Car() {
       { x: quat.current.x, y: quat.current.y, z: quat.current.z, w: quat.current.w },
       true,
     )
-  })
+  }, -60) // 先于物理步（Physics updatePriority=-50）施力
 
   return (
     <RigidBody

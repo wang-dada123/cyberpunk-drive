@@ -2,7 +2,11 @@ import { Suspense, useState } from 'react'
 import { PerformanceMonitor } from '@react-three/drei'
 import { PerfOverlay } from './PerfOverlay'
 import { DEBUG } from '../utils/quality'
-import { Canvas } from '@react-three/fiber'
+import { Canvas, advance } from '@react-three/fiber'
+
+// 仅开发自测：?manual → frameloop=never，由 Playwright 调 window.__advance(ts) 以固定节奏（如 144Hz）推进帧
+const MANUAL = import.meta.env.DEV && new URLSearchParams(location.search).has('manual')
+if (MANUAL) Object.assign(window, { __advance: advance })
 import { Physics } from '@react-three/rapier'
 import { EffectComposer, Bloom } from '@react-three/postprocessing'
 import { colors, bloom, fogDensity, districts } from '../theme/colors'
@@ -13,6 +17,7 @@ import { FollowCamera } from './FollowCamera'
 import { DistrictAtmosphere } from './DistrictAtmosphere'
 import { Rain } from './Rain'
 import { isMobile } from '../utils/isMobile'
+import { detectRenderer } from '../utils/rendererCheck'
 
 function Lights() {
   // 预算：全场 pointLight = 6（广场 1 + 四区各 1 + 窄巷门 1），桌面/手机一致
@@ -40,22 +45,24 @@ export function Scene() {
   return (
     <Canvas
       dpr={dpr}
+      frameloop={MANUAL ? 'never' : 'always'}
       camera={{ position: [0, 6, 12], fov: 50, near: 0.5, far: 170 }}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
-      onCreated={({ gl }) => { if (import.meta.env.DEV || DEBUG) (window as unknown as { __gl?: unknown }).__gl = gl }}
+      onCreated={({ gl, camera }) => { detectRenderer(gl); if (import.meta.env.DEV || DEBUG) Object.assign(window, { __gl: gl, __cam: camera }) }}
       style={{ width: '100%', height: '100%', background: colors.bg }}
     >
-      {/* FPS 低时自动降 DPR（只在跨阈值时 setState，非每帧） */}
+      {/* 持续低帧时 DPR 只降一次到 1，不再回升 */}
       <PerformanceMonitor
-        onDecline={() => setDpr((d) => Math.max(0.75, +(d - 0.25).toFixed(2)))}
-        onIncline={() => setDpr((d) => Math.min(MAX_DPR, +(d + 0.25).toFixed(2)))}
+        // 单向降级一次：原先 incline/decline 来回切 DPR → Canvas resize + 后处理 FBO 重建 → 周期性尖峰
+        flipflops={1}
+        onDecline={() => setDpr((d) => (d > 1 ? 1 : d))}
       />
       {DEBUG && <PerfOverlay />}
       <color attach="background" args={[colors.bg]} />
       <fogExp2 attach="fog" args={[colors.fog, fogDensity]} />
       <Lights />
       <Suspense fallback={null}>
-        <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60} interpolate>
+        <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60} interpolate updatePriority={-50}>
           <StaticBatch><City /></StaticBatch>
           <Car />
         </Physics>
