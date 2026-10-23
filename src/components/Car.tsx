@@ -1,0 +1,150 @@
+import { useRef } from 'react'
+import { useFrame } from '@react-three/fiber'
+import { CuboidCollider, RigidBody, type RapierRigidBody } from '@react-three/rapier'
+import * as THREE from 'three'
+import { colors } from '../theme/colors'
+import { getDriveInput } from '../hooks/useControls'
+
+const FORCE = 28
+const TURN = 3.2
+const MAX_SPEED = 18
+
+/** 供相机读取的车体世界坐标 */
+export const carPose = {
+  position: new THREE.Vector3(0, 1, 0),
+  quaternion: new THREE.Quaternion(),
+}
+
+/**
+ * 方块灰模小车：品红车身 + 青色车灯。
+ * 显式 collider + CCD + 掉落拉回，防止穿地后相机掉进虚空。
+ */
+export function Car() {
+  const body = useRef<RapierRigidBody>(null)
+  const forward = useRef(new THREE.Vector3())
+  const quat = useRef(new THREE.Quaternion())
+  const euler = useRef(new THREE.Euler())
+
+  useFrame((_, dt) => {
+    const rb = body.current
+    if (!rb) return
+
+    if (import.meta.env.DEV) (window as unknown as { __car?: RapierRigidBody }).__car = rb // 调试/截图用
+    let t = rb.translation()
+
+    // 防穿模兜底：掉到地面以下则拉回并清零纵向速度
+    if (t.y < 0.3) {
+      rb.setTranslation({ x: t.x, y: 0.6, z: t.z }, true)
+      const lv0 = rb.linvel()
+      rb.setLinvel({ x: lv0.x, y: 0, z: lv0.z }, true)
+      t = rb.translation()
+    }
+
+    const rot = rb.rotation()
+    quat.current.set(rot.x, rot.y, rot.z, rot.w)
+
+    carPose.position.set(t.x, t.y, t.z)
+    carPose.quaternion.copy(quat.current)
+
+    const { forward: f, turn: turnInput } = getDriveInput()
+    forward.current.set(0, 0, -1).applyQuaternion(quat.current)
+
+    const lv = rb.linvel()
+    const speed = Math.hypot(lv.x, lv.z)
+    if (f !== 0 && speed < MAX_SPEED) {
+      rb.applyImpulse(
+        {
+          x: forward.current.x * FORCE * f * dt,
+          y: 0,
+          z: forward.current.z * FORCE * f * dt,
+        },
+        true,
+      )
+    }
+
+    const moving = Math.abs(f) > 0.05 || speed > 0.4
+    if (moving && turnInput !== 0) {
+      const reversing = f < -0.05
+      const sign = reversing ? -1 : 1
+      rb.setAngvel({ x: 0, y: TURN * turnInput * sign, z: 0 }, true)
+    } else {
+      const av = rb.angvel()
+      rb.setAngvel({ x: 0, y: av.y * 0.85, z: 0 }, true)
+    }
+
+    // 锁俯仰/侧倾
+    euler.current.setFromQuaternion(quat.current, 'YXZ')
+    euler.current.x = 0
+    euler.current.z = 0
+    quat.current.setFromEuler(euler.current)
+    rb.setRotation(
+      { x: quat.current.x, y: quat.current.y, z: quat.current.z, w: quat.current.w },
+      true,
+    )
+  })
+
+  return (
+    <RigidBody
+      ref={body}
+      colliders={false}
+      position={[0, 1, 0]}
+      mass={1.2}
+      linearDamping={1.2}
+      angularDamping={4}
+      enabledRotations={[false, true, false]}
+      friction={1.6}
+      restitution={0}
+      ccd
+      canSleep={false}
+    >
+      {/* 半尺寸：约 1.1 × 0.7 × 2 的车体包围盒 */}
+      <CuboidCollider args={[0.55, 0.35, 1]} position={[0, 0.15, 0]} friction={1.6} />
+      <group>
+        <mesh castShadow position={[0, 0.15, 0]}>
+          <boxGeometry args={[1.1, 0.4, 2]} />
+          <meshStandardMaterial
+            color={colors.carBody}
+            emissive={colors.iceBlue}
+            emissiveIntensity={0.06}
+            metalness={0.5}
+            roughness={0.55}
+          />
+        </mesh>
+        <mesh castShadow position={[0, 0.45, -0.15]}>
+          <boxGeometry args={[0.85, 0.35, 0.9]} />
+          <meshStandardMaterial
+            color="#15181d"
+            emissive={colors.coldWhite}
+            emissiveIntensity={0.05}
+            metalness={0.3}
+            roughness={0.7}
+          />
+        </mesh>
+        <mesh position={[-0.35, 0.15, -1.05]}>
+          <boxGeometry args={[0.2, 0.12, 0.08]} />
+          <meshStandardMaterial
+            color={colors.coldWhite}
+            emissive={colors.coldWhite}
+            emissiveIntensity={0.25}
+          />
+        </mesh>
+        <mesh position={[0.35, 0.15, -1.05]}>
+          <boxGeometry args={[0.2, 0.12, 0.08]} />
+          <meshStandardMaterial
+            color={colors.coldWhite}
+            emissive={colors.coldWhite}
+            emissiveIntensity={0.25}
+          />
+        </mesh>
+        <mesh position={[0, 0.2, 1.02]}>
+          <boxGeometry args={[0.7, 0.08, 0.06]} />
+          <meshStandardMaterial
+            color={colors.tail}
+            emissive={colors.tail}
+            emissiveIntensity={1.8}
+          />
+        </mesh>
+      </group>
+    </RigidBody>
+  )
+}
