@@ -4,7 +4,7 @@ import { DEBUG } from '../utils/quality'
 import { Canvas } from '@react-three/fiber'
 import { Physics } from '@react-three/rapier'
 import { EffectComposer, Bloom } from '@react-three/postprocessing'
-import { colors, bloom, fogDensity } from '../theme/colors'
+import { colors, bloom, fogDensity, districts } from '../theme/colors'
 import { City } from './City'
 import { Car } from './Car'
 import { FollowCamera } from './FollowCamera'
@@ -13,22 +13,20 @@ import { Rain } from './Rain'
 import { isMobile } from '../utils/isMobile'
 
 function Lights() {
-  // 冰蓝地面光池：每 ~10m 一个，手机端限量
-  const zs = [-6, -26, -46] // 预算：全场 pointLight ≤ 6（巷 3 + 作品街 ≤2 + 门 1）
+  // 预算：全场 pointLight = 6（广场 1 + 四区各 1 + 窄巷门 1），桌面/手机一致
+  const pl: Array<[number, number, number, string, number, number]> = [
+    [0, 6, 14, colors.iceBlue, 1.0, 22], // 广场 / 出生点
+    [0, 5, -50, districts.portfolio.accent2, 0.9, 20], // 作品街
+    [60, 4, 0, districts.aiStall.accent, 1.0, 20], // AI 摊位
+    [-60, 4, 0, districts.hidden.accent, 0.8, 18], // 彩蛋区
+    [0, 4, 112, colors.iceBlue, 0.9, 14], // 雨夜窄巷
+    [0, 8, 140, colors.iceBlue, 1.2, 18], // 窄巷尽头门
+  ]
   return (
     <>
       <DistrictAtmosphere />
-      {/* 弱月光，从巷尾上方打轮廓 */}
       <directionalLight position={[0, 25, -60]} intensity={0.25} color="#9FC9FF" />
-      {zs.map((z) => (
-        <pointLight key={z} position={[0, 4, z]} intensity={0.8} color={colors.iceBlue} distance={10} />
-      ))}
-      {/* 作品街光池（亮蓝） */}
-      {(isMobile ? [-20] : [-12, -28]).map((lz) => {
-        const th = (-Math.PI * 2) / 3
-        return <pointLight key={'pf' + lz} position={[lz * Math.sin(th), 4, lz * Math.cos(th)]} intensity={0.9} color={colors.deepBlue} distance={12} />
-      })}
-      <pointLight position={[0, 8, -48]} intensity={1.2} color={colors.deepBlue} distance={20} />
+      {pl.map(([x, y, z, c, i, d]) => <pointLight key={x + ',' + z} position={[x, y, z]} color={c} intensity={i} distance={d} />)}
     </>
   )
 }
@@ -40,7 +38,7 @@ export function Scene() {
   return (
     <Canvas
       dpr={dpr}
-      camera={{ position: [0, 6, 12], fov: 50, near: 0.5, far: 200 }}
+      camera={{ position: [0, 6, 12], fov: 50, near: 0.5, far: 260 }}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
       style={{ width: '100%', height: '100%', background: colors.bg }}
     >

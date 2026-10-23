@@ -47,9 +47,16 @@ function useZoomInput() {
  * 帧率无关阻尼 1-exp(-k·dt)，120/144Hz 下一致。挂在 <Physics> 之后。
  */
 export function FollowCamera() {
-  const { camera } = useThree()
+  const { camera, scene } = useThree()
   useZoomInput()
   useFrame((_, rawDt) => {
+    // 仅开发截图：window.__topdown = true → 正上方俯视全图
+    if (import.meta.env.DEV && (window as unknown as { __topdown?: boolean }).__topdown) {
+      camera.position.set(0, 330, 0.01); camera.lookAt(0, 0, 0)
+      if (scene.fog) (scene.fog as THREE.FogExp2).density = 0.0006
+      ;(camera as THREE.PerspectiveCamera).far = 800; (camera as THREE.PerspectiveCamera).updateProjectionMatrix()
+      return
+    }
     const dt = Math.min(rawDt, 0.1)
     const obj = carVisual.current
     if (obj) {

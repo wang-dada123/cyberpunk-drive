@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { colors } from '../theme/colors'
@@ -50,8 +50,11 @@ export function Rain() {
     })
     return { geo: g, mat: m }
   }, [count])
-  useFrame((_, dt) => {
+  const ref = useRef<THREE.LineSegments>(null)
+  useFrame(({ camera }, dt) => {
+    // 雨区跟随镜头（大地图下不用铺满全城）
+    if (ref.current) ref.current.position.set(Math.round(camera.position.x), 0, Math.round(camera.position.z))
     mat.uniforms.uTime.value = (mat.uniforms.uTime.value + Math.min(dt, 0.1)) % 1000
   })
-  return <lineSegments geometry={geo} material={mat} rotation={[0, 0, THREE.MathUtils.degToRad(10)]} frustumCulled={false} />
+  return <lineSegments ref={ref} geometry={geo} material={mat} rotation={[0, 0, THREE.MathUtils.degToRad(10)]} frustumCulled={false} />
 }

@@ -1,3 +1,4 @@
+import { SPAWN } from '../data/mapLayout'
 import { Suspense, useRef } from 'react'
 import { CarModel } from './CarModel'
 import { useFrame } from '@react-three/fiber'
@@ -90,7 +91,7 @@ export function Car() {
     <RigidBody
       ref={body}
       colliders={false}
-      position={[0, 1, 0]}
+      position={SPAWN}
       mass={1.2}
       linearDamping={1.2}
       angularDamping={4}

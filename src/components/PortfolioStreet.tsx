@@ -29,15 +29,16 @@ const useActive = () => useSyncExternalStore(subscribe, () => active)
 const useOpen = () => useSyncExternalStore(subscribe, () => open)
 
 /* ---------- 布局（本地坐标：巷子朝 -Z，路宽 7，楼内侧 ≥3.85） ---------- */
-export const STREET_ROT_Y = (-Math.PI * 2) / 3 // 东南斜巷
+export const STREET_ROT_Y = 0 // v2：北向作品展示街
+export const STREET_ORIGIN_Z = -30 // 局部原点（广场北缘外）
 const BOARD_W = 3
 const BOARD_H = 4.5
 const BOARD_T = 0.16
-const BOARD_X = 3.72 // 路缘 3.5 与楼面 3.85 之间，不压路
+const BOARD_X = 7.45 // 路缘 3.5 与楼面 3.85 之间，不压路
 const BOARD_Y = 0.5 + BOARD_H / 2
-const RING_X = 1.9
+const RING_X = 3.8
 const RING_R = 1.4
-const ZS = [-10, -20, -30, -40]
+const ZS = [-4, -16, -28, -58, -84, -92] // 世界 z -34…-122，避开环路(-75)与后巷(-104)路口
 
 type Slot = { x: number; z: number; side: 1 | -1; p: Project }
 const slots: Slot[] = ZS.flatMap((z, k) =>
@@ -112,7 +113,7 @@ function Board({ slot, idx }: { slot: Slot; idx: number }) {
 export function PortfolioStreet() {
   const worldRings = useMemo(() => {
     const m = new THREE.Matrix4().makeRotationY(STREET_ROT_Y)
-    return slots.map((s) => new THREE.Vector3(s.side * RING_X, 0, s.z).applyMatrix4(m))
+    return slots.map((s) => new THREE.Vector3(s.side * RING_X, 0, s.z).applyMatrix4(m).add(new THREE.Vector3(0, 0, STREET_ORIGIN_Z)))
   }, [])
   useFrame(() => {
     const { x, z } = carPose.position
