@@ -62,9 +62,9 @@ function Board({ slot, idx }: { slot: Slot; idx: number }) {
   // 每块板一个面板材质（仅它需要亮度变化）
   const panelMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#0C1624', emissive: D.accent2, emissiveIntensity: 0.08, roughness: 0.5 }), [])
   useEffect(() => () => panelMat.dispose(), [panelMat])
-  useFrame(() => {
+  useFrame((_, dt) => {
     const target = act ? 0.55 : 0.08
-    panelMat.emissiveIntensity += (target - panelMat.emissiveIntensity) * 0.15
+    panelMat.emissiveIntensity += (target - panelMat.emissiveIntensity) * (1 - Math.exp(-dt * 9))
   })
   const rotY = slot.side === -1 ? Math.PI / 2 : -Math.PI / 2 // 面朝路中
   const ow = 0.04

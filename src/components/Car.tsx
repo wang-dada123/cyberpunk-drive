@@ -10,6 +10,9 @@ const TURN = 3.2
 const MAX_SPEED = 18
 
 /** 供相机读取的车体世界坐标 */
+/** 插值后的可视对象（相机读它，避免物理步与渲染不同步抖动） */
+export const carVisual: { current: THREE.Object3D | null } = { current: null }
+
 export const carPose = {
   position: new THREE.Vector3(0, 1, 0),
   quaternion: new THREE.Quaternion(),
@@ -69,7 +72,7 @@ export function Car() {
       rb.setAngvel({ x: 0, y: TURN * turnInput * sign, z: 0 }, true)
     } else {
       const av = rb.angvel()
-      rb.setAngvel({ x: 0, y: av.y * 0.85, z: 0 }, true)
+      rb.setAngvel({ x: 0, y: av.y * Math.pow(0.85, dt * 60), z: 0 }, true)
     }
 
     // 锁俯仰/侧倾
@@ -99,9 +102,11 @@ export function Car() {
     >
       {/* 半尺寸：约 1.1 × 0.7 × 2 的车体包围盒 */}
       <CuboidCollider args={[0.55, 0.35, 1]} position={[0, 0.15, 0]} friction={1.6} />
-      <Suspense fallback={null}>
-        <CarModel />
-      </Suspense>
+      <group ref={(o) => { carVisual.current = o }}>
+        <Suspense fallback={null}>
+          <CarModel />
+        </Suspense>
+      </group>
     </RigidBody>
   )
 }

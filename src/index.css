@@ -114,3 +114,4 @@ body,
   color:#4FC3F7;font-size:13px;margin:8px 0 12px;background:#0B1A2C}
 .pf-close{position:absolute;right:12px;top:8px;background:none;border:none;color:#E8F4FF;font-size:26px;cursor:pointer}
 @media (max-width:768px){.pf-card{top:auto;bottom:16px;transform:none;right:12px;width:min(240px,55vw);padding:12px}.pf-title{font-size:18px}}
+.stats-gl{position:fixed!important;top:auto!important;bottom:8px;right:8px;left:auto!important;z-index:50}

@@ -21,7 +21,6 @@ export function CarModel() {
       const m = o as THREE.Mesh
       if (m.isMesh) {
         m.material = /wheel/i.test(m.name) || /wheel/i.test(m.parent?.name ?? '') ? wheelMat : bodyMat
-        m.castShadow = true
       }
     })
     return s

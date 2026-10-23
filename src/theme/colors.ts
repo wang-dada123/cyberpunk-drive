@@ -19,7 +19,7 @@ export const bloom = {
   tail: '#FF2A2A',
 } as const
 
-export const fogDensity = 0.035
+export const fogDensity = 0.022 // 俯视远机位下由 0.035 下调，避免发闷
 
 /** v1.1 分街区色调：冷蓝底不变，每区一个强调色（≤20% 画面） */
 export const districts = {

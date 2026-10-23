@@ -12,12 +12,13 @@ const AXES: Array<[DistrictId, THREE.Vector3]> = [
   ['aiStall', dir((Math.PI * 2) / 3)],
 ]
 const PLAZA_R = 6
+const _v = new THREE.Vector3()
 
 export let currentDistrict: DistrictId = 'alley'
 
 export function districtAt(x: number, z: number): DistrictId {
   if (Math.hypot(x, z) < PLAZA_R) return 'alley'
-  const v = new THREE.Vector3(x, 0, z).normalize()
+  const v = _v.set(x, 0, z).normalize()
   let best: DistrictId = 'alley'
   let bd = -Infinity
   for (const [id, a] of AXES) {

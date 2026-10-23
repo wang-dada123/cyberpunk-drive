@@ -14,6 +14,7 @@ const SIGN_ICE = new THREE.Color(colors.iceBlue).multiplyScalar(0.7)
 const GATE_GLOW = new THREE.Color(colors.iceBlue).multiplyScalar(2.0)
 const SIGN_WHITE = new THREE.Color(colors.coldWhite).multiplyScalar(0.4)
 import { isMobile } from '../utils/isMobile'
+import { HIGH_QUALITY } from '../utils/quality'
 import { PortfolioStreet } from './PortfolioStreet'
 
 type NeonBoxProps = {
@@ -37,7 +38,7 @@ function NeonBuilding({
   return (
     <RigidBody type="fixed" colliders={false} position={position} restitution={0.05}>
       <CuboidCollider args={[w / 2, h / 2, d / 2]} />
-      <mesh castShadow receiveShadow>
+      <mesh >
         <boxGeometry args={size} />
         <meshStandardMaterial
           color={colors.building}
@@ -49,7 +50,7 @@ function NeonBuilding({
       </mesh>
       <mesh position={[0, h / 2 + 0.08, 0]}>
         <boxGeometry args={[w * 0.9, 0.12, d * 0.9]} />
-        <meshStandardMaterial color={emissive} emissive={emissive} emissiveIntensity={1.5} />
+        <meshStandardMaterial color={colors.building} emissive={emissive} emissiveIntensity={0.25} />
       </mesh>
       {strips && lit &&
         [-1, 1].flatMap((sx) =>
@@ -140,17 +141,17 @@ function RoadStrip({
   return (
     <group position={position} rotation={[0, rotationY, 0]}>
       {/* 路面 */}
-      <mesh position={[0, 0.02, 0]} receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh position={[0, 0.02, 0]}  rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[width, length]} />
-        {isMobile ? (
+        {isMobile || !HIGH_QUALITY ? (
           <meshStandardMaterial color={colors.road} metalness={0.6} roughness={0.35} />
         ) : (
           <MeshReflectorMaterial
             color={colors.road}
             metalness={0.6}
             roughness={0.35}
-            resolution={512}
-            blur={[200, 60]}
+            resolution={256}
+            blur={[100, 30]}
             mixBlur={1}
             mixStrength={1.2}
             mirror={0.75}
@@ -296,23 +297,23 @@ export function City() {
   })
 
   return (
-    <StripInstances limit={1000} frames={Infinity} frustumCulled={false}>
+    <StripInstances limit={1000} frames={120} frustumCulled={false}>
       <boxGeometry />
       <meshBasicMaterial toneMapped={false} />
-    <DashInstances limit={60} frames={Infinity} frustumCulled={false}>
+    <DashInstances limit={60} frames={120} frustumCulled={false}>
       <boxGeometry args={[0.16, 0.02, 1.6]} />
       <meshStandardMaterial color={colors.coldWhite} emissive={colors.coldWhite} emissiveIntensity={0.5} />
-    <WireInstances limit={60} frames={Infinity} frustumCulled={false}>
+    <WireInstances limit={60} frames={120} frustumCulled={false}>
       <boxGeometry />
       <meshBasicMaterial color="#1A2636" />
-    <SignInstances limit={20} frames={Infinity} frustumCulled={false}>
+    <SignInstances limit={20} frames={120} frustumCulled={false}>
       <boxGeometry />
       <meshBasicMaterial toneMapped={false} />
     <group>
       {/* 厚地面 */}
       <RigidBody type="fixed" colliders={false} friction={1.8} restitution={0}>
         <CuboidCollider args={[60, 0.5, 60]} position={[0, -0.5, 0]} friction={1.8} />
-        <mesh position={[0, -0.5, 0]} receiveShadow>
+        <mesh position={[0, -0.5, 0]} >
           <boxGeometry args={[120, 1, 120]} />
           <meshStandardMaterial
             color={colors.ground}
@@ -325,7 +326,7 @@ export function City() {
       </RigidBody>
 
       {/* 缩小中央广场 + 围合感 */}
-      <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} >
         <circleGeometry args={[4.2, 40]} />
         <meshStandardMaterial
           color="#121822"
