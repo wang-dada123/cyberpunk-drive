@@ -1,8 +1,8 @@
-import { useRef } from 'react'
+import { Suspense, useRef } from 'react'
+import { CarModel } from './CarModel'
 import { useFrame } from '@react-three/fiber'
 import { CuboidCollider, RigidBody, type RapierRigidBody } from '@react-three/rapier'
 import * as THREE from 'three'
-import { colors } from '../theme/colors'
 import { getDriveInput } from '../hooks/useControls'
 
 const FORCE = 28
@@ -99,52 +99,9 @@ export function Car() {
     >
       {/* 半尺寸：约 1.1 × 0.7 × 2 的车体包围盒 */}
       <CuboidCollider args={[0.55, 0.35, 1]} position={[0, 0.15, 0]} friction={1.6} />
-      <group>
-        <mesh castShadow position={[0, 0.15, 0]}>
-          <boxGeometry args={[1.1, 0.4, 2]} />
-          <meshStandardMaterial
-            color={colors.carBody}
-            emissive={colors.iceBlue}
-            emissiveIntensity={0.06}
-            metalness={0.5}
-            roughness={0.55}
-          />
-        </mesh>
-        <mesh castShadow position={[0, 0.45, -0.15]}>
-          <boxGeometry args={[0.85, 0.35, 0.9]} />
-          <meshStandardMaterial
-            color="#15181d"
-            emissive={colors.coldWhite}
-            emissiveIntensity={0.05}
-            metalness={0.3}
-            roughness={0.7}
-          />
-        </mesh>
-        <mesh position={[-0.35, 0.15, -1.05]}>
-          <boxGeometry args={[0.2, 0.12, 0.08]} />
-          <meshStandardMaterial
-            color={colors.coldWhite}
-            emissive={colors.coldWhite}
-            emissiveIntensity={0.25}
-          />
-        </mesh>
-        <mesh position={[0.35, 0.15, -1.05]}>
-          <boxGeometry args={[0.2, 0.12, 0.08]} />
-          <meshStandardMaterial
-            color={colors.coldWhite}
-            emissive={colors.coldWhite}
-            emissiveIntensity={0.25}
-          />
-        </mesh>
-        <mesh position={[0, 0.2, 1.02]}>
-          <boxGeometry args={[0.7, 0.08, 0.06]} />
-          <meshStandardMaterial
-            color={colors.tail}
-            emissive={colors.tail}
-            emissiveIntensity={1.8}
-          />
-        </mesh>
-      </group>
+      <Suspense fallback={null}>
+        <CarModel />
+      </Suspense>
     </RigidBody>
   )
 }

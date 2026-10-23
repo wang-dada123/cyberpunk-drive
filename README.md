@@ -51,3 +51,7 @@ Bloom：`intensity 0.8` / `threshold 0.9`；紫色指数雾 `density ≈ 0.02`�
 已有：灰模城市、方块小车、键盘驾驶、第三人称跟随、Bloom/雾、手机摇杆占位、Pages workflow。
 
 未做：Kenney/Quaternius 正式模型、作品集彩蛋弹卡、隐藏关、AI 摆摊、音效。
+
+## Credits
+
+- Car model: **Car Kit** by [Kenney](https://kenney.nl/assets/car-kit) — CC0 1.0 (public domain). `public/models/race-future.glb`, license in `public/models/KENNEY-LICENSE.txt`.

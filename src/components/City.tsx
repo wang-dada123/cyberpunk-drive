@@ -9,9 +9,10 @@ const [StripInstances, Strip] = createInstances()
 const [DashInstances, Dash] = createInstances()
 const [WireInstances, Wire] = createInstances()
 const [SignInstances, Sign] = createInstances()
-const STRIP_COLOR = new THREE.Color(colors.iceBlue).multiplyScalar(1.0)
-const SIGN_ICE = new THREE.Color(colors.iceBlue).multiplyScalar(1.0)
-const SIGN_WHITE = new THREE.Color(colors.coldWhite).multiplyScalar(0.8)
+const STRIP_COLOR = new THREE.Color(colors.iceBlue).multiplyScalar(0.55)
+const SIGN_ICE = new THREE.Color(colors.iceBlue).multiplyScalar(0.7)
+const GATE_GLOW = new THREE.Color(colors.iceBlue).multiplyScalar(2.0)
+const SIGN_WHITE = new THREE.Color(colors.coldWhite).multiplyScalar(0.4)
 import { isMobile } from '../utils/isMobile'
 import { PortfolioStreet } from './PortfolioStreet'
 
@@ -21,6 +22,7 @@ type NeonBoxProps = {
   emissive?: string
   intensity?: number
   strips?: boolean
+  lit?: boolean
 }
 
 function NeonBuilding({
@@ -29,6 +31,7 @@ function NeonBuilding({
   emissive = colors.iceBlue,
   intensity = 1.55,
   strips = true,
+  lit = true,
 }: NeonBoxProps) {
   const [w, h, d] = size
   return (
@@ -48,9 +51,9 @@ function NeonBuilding({
         <boxGeometry args={[w * 0.9, 0.12, d * 0.9]} />
         <meshStandardMaterial color={emissive} emissive={emissive} emissiveIntensity={1.5} />
       </mesh>
-      {strips &&
+      {strips && lit &&
         [-1, 1].flatMap((sx) =>
-          [-0.28, 0.28].map((fz) => (
+          [0.3].map((fz) => (
             <Strip
               key={`${sx}${fz}`}
               position={[sx * (w / 2 + 0.03), 0, fz * d]}
@@ -103,15 +106,18 @@ function NeonGate({
       />
       {/* 门框后方一块挡板，增加纵深 */}
       <NeonBuilding
-        position={[0, 4, 2.2]}
+        position={[0, 4, -2.2]}
         size={[gap + 1.5, 10, 1.2]}
         emissive={emissive}
         intensity={0.04}
         strips={false}
       />
       {/* 背板细发光内框（开口轮廓） */}
-      <Strip position={[0, 4, 1.55]} scale={[gap, 0.08, 0.05]} color={SIGN_ICE} />
-      <Strip position={[0, 8.6, 1.55]} scale={[gap, 0.08, 0.05]} color={SIGN_ICE} />
+      {/* 门洞发光细框（朝 +Z 迎向来车） */}
+      <Strip position={[-gap / 2, pillarH / 2, pillarD / 2 + 0.04]} scale={[0.12, pillarH, 0.05]} color={GATE_GLOW} />
+      <Strip position={[gap / 2, pillarH / 2, pillarD / 2 + 0.04]} scale={[0.12, pillarH, 0.05]} color={GATE_GLOW} />
+      <Strip position={[0, pillarH, pillarD / 2 + 0.04]} scale={[gap, 0.12, 0.05]} color={GATE_GLOW} />
+      <Strip position={[0, pillarH + lintelH, pillarD * 0.43 + 0.04]} scale={[gap + pillarW * 2, 0.08, 0.05]} color={GATE_GLOW} />
     </group>
   )
 }
@@ -218,6 +224,7 @@ function AlleyBuildings({
         size={[w, row.h, d]}
         emissive={em}
         intensity={intensity}
+        lit={i % 3 === 0}
       />
     )
     if (row.side === 'L' || row.side === 'both') {
@@ -234,7 +241,7 @@ function AlleyBuildings({
     nodes.push(<Wire key={`w2${z}`} position={[0, 11.5 + (k % 2), z - 3]} scale={[span, 0.03, 0.03]} />)
     if (k % 2 === 1) {
       nodes.push(
-        <Sign key={`s${z}`} position={[(k % 4 === 1 ? -1 : 1) * 1.2, 6.5, z + 1]} scale={[3.2, 0.9, 0.12]} color={k % 4 === 1 ? SIGN_ICE : SIGN_WHITE} />,
+        <Sign key={`s${z}`} position={[(k % 4 === 1 ? -1 : 1) * 1.6, 8.2, z + 1]} scale={[2.6, 0.7, 0.1]} color={k % 4 === 1 ? SIGN_ICE : SIGN_WHITE} />,
       )
     }
   }
