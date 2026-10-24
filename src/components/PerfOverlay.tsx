@@ -1,3 +1,4 @@
+import { displayHz, tierState } from '../utils/tier'
 import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -16,8 +17,16 @@ const frameMs = new Float32Array(N), stamp = new Float64Array(N), sorted = new F
 const carSpd = new Float32Array(N), steps = new Uint8Array(N)
 const _cp = new THREE.Vector3(), _lp = new THREE.Vector3()
 let head = 0, filled = 0, acc = 0, hasLp = false
-const COMMON_HZ = [60, 75, 90, 100, 120, 144, 165, 240]
 export const perfStats = { calls: 0, triangles: 0, programs: 0, fps: 0, low1: 0, max5s: 0, hz: 0, nonFinite: 0 }
+
+/** 刷新率不再用"中位帧间隔"（慢帧会被误当成 24Hz）：显示器 Hz＝启动 rAF 快帧簇探测；渲染帧率单独列；判断受限/节流 */
+function hzLine() {
+  const disp = displayHz.probe, med = perfStats.hz
+  let tag = ''
+  if (disp > 0 && disp < 40 && Math.abs(disp - 30) < 4) tag = '  ⚠ 疑似省电/效率模式 30Hz 节流'
+  else if (disp > 0 && med < disp * 0.8) tag = '  ⚠ 渲染跟不上刷新率（GPU/CPU 受限，非显示器）'
+  return `显示器≈${disp ? disp.toFixed(0) : '?'}Hz(rAF探测) 渲染中位${med.toFixed(0)}fps${tag}\n`
+}
 
 export function PerfOverlay() {
   const gl = useThree((s) => s.gl)
@@ -75,10 +84,10 @@ export function PerfOverlay() {
     txt.current.textContent =
       `FPS ${perfStats.fps.toFixed(1)}  1%low ${perfStats.low1.toFixed(1)}\n` +
       `avg ${(sum / n).toFixed(2)}ms  max5s ${mx.toFixed(1)}ms\n` +
-      `刷新率≈${perfStats.hz.toFixed(0)}Hz (中位帧)\n` +
+      hzLine() +
       `calls ${perfStats.calls}  tris ${(perfStats.triangles / 1000).toFixed(1)}k  prog ${perfStats.programs}  nonFinite ${perfStats.nonFinite}\n` +
       rendererInfo.name.replace(/^ANGLE \(/, "").slice(0, 90) + '\n' +
-      (COMMON_HZ.some((h) => Math.abs(perfStats.hz - h) / h < 0.04) ? '' : '⚠ 刷新率非常见值，可能被效率模式限帧\n') +
+      `画质 ${tierState.tier} (${tierState.reason})\n` +
       `视角 ${camState.mode} 切档${camStats.switches}次 来源:${camStats.lastSource} NaN:${camStats.nan}\n` +
       `车速曲线(绿,m/s) 物理步/帧(橙)`
     const g = cv.current.getContext('2d')!

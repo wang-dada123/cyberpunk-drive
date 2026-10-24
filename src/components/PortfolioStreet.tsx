@@ -1,3 +1,4 @@
+import { AB } from '../utils/tier'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import { useFrame } from '@react-three/fiber'
@@ -106,7 +107,7 @@ function Board({ slot, idx }: { slot: Slot; idx: number }) {
         </group>
       </RigidBody>
       {/* 地面光环触发区（路面上、板前） */}
-      <mesh geometry={ringGeo} material={ringMat} position={[slot.side * RING_X, 0.06, slot.z]} rotation={[-Math.PI / 2, 0, 0]} scale={act ? 1.08 : 1} />
+      {!AB.has('ring') && <mesh geometry={ringGeo} material={ringMat} position={[slot.side * RING_X, 0.06, slot.z]} rotation={[-Math.PI / 2, 0, 0]} scale={act ? 1.08 : 1} />}
     </group>
   )
 }

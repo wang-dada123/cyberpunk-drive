@@ -1,3 +1,4 @@
+import { AB } from './utils/tier'
 import { Scene } from './components/Scene'
 import { MobileControls } from './components/MobileControls'
 import { Minimap } from './components/Minimap'
@@ -12,7 +13,7 @@ export default function App() {
       <Scene />
       <MobileControls />
       <PortfolioOverlay />
-      <Minimap />
+      {!AB.has('minimap') && <Minimap />}
       <div className="hud">
         <h1>赛博车 · Demo</h1>
         <p>WASD / 方向键驾驶 · 触屏左半区摇杆</p>

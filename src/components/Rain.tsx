@@ -9,8 +9,8 @@ const H = 20
 const SPEED = 18
 
 /** 雨丝：GPU 顶点着色器下落（uniform 时间），CPU 每帧零缓冲更新。冷白 30%，斜 10°，手机 1000 / 桌面 3000 */
-export function Rain() {
-  const count = isMobile ? 1000 : 3000
+export function Rain({ half = false }: { half?: boolean }) {
+  const count = (isMobile ? 1000 : 3000) / (half ? 2 : 1)
   const { geo, mat } = useMemo(() => {
     const pos = new Float32Array(count * 6)
     const end = new Float32Array(count * 2)

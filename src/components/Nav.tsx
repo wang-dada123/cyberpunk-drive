@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { AB } from '../utils/tier'
 import * as THREE from 'three'
 import { NAV, SIGNPOSTS, LANDMARKS, GROUND_LABELS, landmarkOf, type NavId, type SignLine } from '../data/nav'
 
@@ -92,22 +93,26 @@ function buildGeo(a: ReturnType<typeof buildAtlas>) {
   return geo
 }
 
+// 材质提前建好（占位 1×1 纹理）→ 进 StaticBatch 的 gl.compile 预热；字体加载完只换纹理图像，不再触发新着色器编译
+const signTex = new THREE.CanvasTexture(document.createElement('canvas')); signTex.colorSpace = THREE.SRGBColorSpace; signTex.anisotropy = 4
+const signMat = new THREE.MeshBasicMaterial({ map: signTex, transparent: true, side: THREE.DoubleSide, toneMapped: false, depthWrite: false, alphaTest: 0.02 })
+signMat.color.setScalar(K)
+const emptyGeo = new THREE.BufferGeometry(); emptyGeo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, 0, 0, 0, 0], 3)); emptyGeo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, 0], 2))
 export function Signposts() {
   const [atlas, setAtlas] = useState<ReturnType<typeof buildAtlas> | null>(null)
-  useEffect(() => { let ok = true; loadFonts().then(() => ok && setAtlas(buildAtlas())); return () => { ok = false } }, [])
-  const res = useMemo(() => {
-    if (!atlas) return null
-    const tex = new THREE.CanvasTexture(atlas.cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4
-    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, toneMapped: false, depthWrite: false, alphaTest: 0.02 })
-    mat.color.setScalar(K)
-    return { geo: buildGeo(atlas), mat }
+  useEffect(() => { let ok = true; loadFonts().then(() => { if (!ok) return; const t0 = performance.now(); const a = buildAtlas(); (window as unknown as { __atlasMs: number }).__atlasMs = performance.now() - t0; setAtlas(a) }); return () => { ok = false } }, [])
+  const geo = useMemo(() => {
+    if (!atlas) return emptyGeo
+    signTex.image = atlas.cv; signTex.needsUpdate = true
+    return buildGeo(atlas)
   }, [atlas])
-  if (!res) return null
-  return <mesh geometry={res.geo} material={res.mat} renderOrder={2} />
+  if (AB.has('signs')) return null
+  return <mesh geometry={geo} material={signMat} renderOrder={2} frustumCulled={!!atlas} />
 }
 
 /** 地标光柱：主色 ×2.0 自发光；顶点着色器把超出远裁剪面的顶点压回 far 之内＝便宜的远景版（同一个 mesh，不另建 LOD）。1 draw call。 */
 export function LandmarkBeacons() {
+  if (AB.has('landmark')) return null
   const { geo, mat } = useMemo(() => {
     const box = new THREE.BoxGeometry(1, 1, 1); box.translate(0, 0.5, 0)
     const g = new THREE.InstancedBufferGeometry()
