@@ -109,6 +109,13 @@ function Board({ slot, idx }: { slot: Slot; idx: number }) {
   )
 }
 
+/** 展示光环世界坐标 + 半径（供 City 生成虚线时避让） */
+export const SHOWCASE_RING_R = RING_R
+export const showcaseRingsWorld: Array<[number, number]> = slots.map((s) => {
+  const v = new THREE.Vector3(s.side * RING_X, 0, s.z).applyMatrix4(new THREE.Matrix4().makeRotationY(STREET_ROT_Y))
+  return [v.x, v.z + STREET_ORIGIN_Z]
+})
+
 /** 放入东南斜巷 group（已旋转）内部，使用本地坐标 */
 export function PortfolioStreet() {
   const worldRings = useMemo(() => {

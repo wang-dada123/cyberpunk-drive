@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { carPose, carVisual } from './Car'
+import { tunnelRoof } from './Structures'
+import { TUNNEL, TUNNEL_R1 } from '../data/mapLayout'
 import { isMobile } from '../utils/isMobile'
 
 /**
@@ -12,6 +14,7 @@ import { isMobile } from '../utils/isMobile'
 export type CamMode = 'third' | 'first' | 'top'
 const MODES: CamMode[] = ['third', 'first', 'top']
 export const camState = { mode: 'third' as CamMode }
+if (import.meta.env.DEV) Object.assign(window, { __camState: camState })
 
 // —— 通用 ——
 const TRANSITION = 0.3
@@ -58,7 +61,7 @@ let hintEl: HTMLDivElement | null = null, hintTimer = 0
 function showHint() {
   if (!hintEl) {
     hintEl = document.createElement('div')
-    Object.assign(hintEl.style, { position: 'fixed', top: '12px', left: '50%', transform: 'translateX(-50%)', zIndex: '20',
+    Object.assign(hintEl.style, { position: 'fixed', top: isMobile ? '96px' : '64px', left: '50%', transform: 'translateX(-50%)', zIndex: '20',
       padding: '6px 12px', borderRadius: '8px', background: 'rgba(8,16,28,0.7)', color: '#bfeaff', font: '13px system-ui',
       border: '1px solid #5fd4ff', pointerEvents: 'none', transition: 'opacity .3s', opacity: '0' })
     document.body.appendChild(hintEl)
@@ -124,6 +127,16 @@ function useCamInput(camera: THREE.PerspectiveCamera) {
   }, [camera])
 }
 
+/** 把点限制在隧道内：横向 |v|≤3.8，高度 ≤ 顶板下 0.5m（且不低于车 +1） */
+function clampTunnel(p: THREE.Vector3, carY: number) {
+  const [dx, dz] = TUNNEL.dir, nx = -dz, nz = dx
+  const u = p.x * dx + p.z * dz, v = p.x * nx + p.z * nz
+  if (u < TUNNEL.R0 - 4 || u > TUNNEL_R1 + 4) return
+  const vc = THREE.MathUtils.clamp(v, -3.8, 3.8)
+  p.x += (vc - v) * nx; p.z += (vc - v) * nz
+  p.y = Math.max(carY + 1, Math.min(p.y, -0.5))
+}
+
 const lookQuat = (p: Pose) => { _m.lookAt(p.pos, p.look, _up); p.quat.setFromRotationMatrix(_m) }
 
 export function FollowCamera() {
@@ -144,6 +157,12 @@ export function FollowCamera() {
     else { _pos.copy(carPose.position); _q.copy(carPose.quaternion) }
     const carYaw = _e.setFromQuaternion(_q, 'YXZ').y // 只取 yaw，忽略 pitch/roll
 
+    // 瞬移（防掉落兜底/调试传送）：整体平移镜头状态，避免加速度限幅的跟随点甩出几百米
+    if (inited && _pos.distanceToSquared(_prevFilt) > 100) {
+      _tmp.subVectors(_pos, _prevFilt)
+      for (const v of [_focus, third.pos, third.look, top.pos, top.look]) v.add(_tmp)
+      _prevFilt.copy(_pos); _focusVel.set(0, 0, 0)
+    }
     if (!inited) {
       _filt.copy(_pos); _prevFilt.copy(_pos); _focus.copy(_pos); tYaw = fYaw = carYaw
       inited = true
@@ -170,7 +189,11 @@ export function FollowCamera() {
     thirdExtra += (thirdExtraT - thirdExtra) * damp(K_ZOOM, dt)
     const back = T_BACK + thirdExtra + T_SPEED_EXTRA * Math.min(1, speed / T_SPEED_REF)
     _tmp.set(Math.sin(tYaw) * back, T_HEIGHT, Math.cos(tYaw) * back).add(_focus)
+    // 隧道：车在地面以下时镜头压到顶板下、并限制在隧道横向宽度内（不穿顶、不穿墙）
+    const inTunnel = _pos.y < -0.8
+    if (inTunnel) clampTunnel(_tmp, _pos.y)
     third.pos.lerp(_tmp, damp(T_K_POS, dt))
+    if (inTunnel) clampTunnel(third.pos, _pos.y)
     third.look.set(-Math.sin(tYaw) * T_LOOK_AHEAD, T_LOOK_H, -Math.cos(tYaw) * T_LOOK_AHEAD).add(_focus)
     lookQuat(third)
 
@@ -190,6 +213,7 @@ export function FollowCamera() {
     top.look.lerp(_tmp, damp(P_K_LOOK, dt))
     lookQuat(top)
 
+    if (tunnelRoof.current) tunnelRoof.current.visible = camState.mode !== 'top'
     // 输出 + 切换过渡
     const p = poses[camState.mode]
     let fov = p.fov

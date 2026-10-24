@@ -2,7 +2,7 @@ import { SPAWN } from '../data/mapLayout'
 import { Suspense, useRef } from 'react'
 import { CarModel } from './CarModel'
 import { useFrame } from '@react-three/fiber'
-import { CuboidCollider, RigidBody, useAfterPhysicsStep, useBeforePhysicsStep, type RapierRigidBody } from '@react-three/rapier'
+import { CapsuleCollider, CuboidCollider, RigidBody, useAfterPhysicsStep, useBeforePhysicsStep, type RapierRigidBody } from '@react-three/rapier'
 import * as THREE from 'three'
 import { getDriveInput } from '../hooks/useControls'
 
@@ -90,7 +90,7 @@ export function Car() {
     let t = rb.translation()
 
     // 防穿模兜底：掉到地面以下则拉回并清零纵向速度
-    if (t.y < -0.5) { // 原阈值 0.3 高于车静止高度(≈0.2)，导致每 ~0.27s 被拉回 0.6 再自由落体 = "一跳一跳"
+    if (t.y < -7) { // 只在低于最低地形（隧道 -5m）时兜底；原 0.3 阈值高于车静止高度导致"一跳一跳"
       rb.setTranslation({ x: t.x, y: 0.6, z: t.z }, true)
       const lv0 = rb.linvel()
       rb.setLinvel({ x: lv0.x, y: 0, z: lv0.z }, true)
@@ -154,7 +154,9 @@ export function Car() {
       canSleep={false}
     >
       {/* 半尺寸：约 1.1 × 0.7 × 2 的车体包围盒 */}
-      <CuboidCollider args={[0.55, 0.35, 1]} position={[0, 0.15, 0]} friction={0} /* 原来车大多悬空，操控实际无摩擦；贴地后保持同手感 */ />
+      {/* 车身盒抬高不触地；底部用纵向胶囊接地：锁俯仰时平盒在坡脚/坡顶会在前后棱之间换接触点而颠，胶囊圆端可连续滑过 */}
+      <CuboidCollider args={[0.55, 0.25, 1]} position={[0, 0.27, 0]} friction={0} />
+      <CapsuleCollider args={[0.62, 0.35]} position={[0, 0.15, 0]} rotation={[Math.PI / 2, 0, 0]} friction={0} />
     </RigidBody>
     {/* 可视车体不挂在 RigidBody 下：由上面自做的 prev/curr 插值驱动 */}
     <group ref={(o) => { visual.current = o; carVisual.current = o; if (import.meta.env.DEV) Object.assign(window, { __carVis: o }) }} position={SPAWN}>

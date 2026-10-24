@@ -7,6 +7,7 @@ export type DriveInput = {
 
 /** 共享驾驶输入：键盘 + 手机摇杆都写这里 */
 const input: DriveInput = { forward: 0, turn: 0 }
+if (import.meta.env.DEV) Object.assign(window, { __drive: input })
 
 export function setMobileInput(forward: number, turn: number) {
   input.forward = clamp(forward, -1, 1)

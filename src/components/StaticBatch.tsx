@@ -13,7 +13,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
  * 标记 userData.dynamic 的物体及其子树跳过。
  */
 export const CHUNK = 60      // 普通网格合批块
-export const INST_CHUNK = 175 // 实例拆块（太细会增加 draw call）
+export const INST_CHUNK = 120 // 实例拆块（太细会增加 draw call）
 export const INST_SPLIT_MIN = 48
 export const batchStats = { meshesIn: 0, mergedOut: 0, instIn: 0, instOut: 0, texts: 0 }
 

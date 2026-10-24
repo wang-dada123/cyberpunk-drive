@@ -3,8 +3,9 @@ import { CuboidCollider, CylinderCollider, RigidBody } from '@react-three/rapier
 import { Text } from '@react-three/drei'
 import * as THREE from 'three'
 import { colors, districts, type DistrictId } from '../theme/colors'
-import { PLAZA_R, WORLD_HALF, rings, segs, signs, roadClearance, districtAt, distSeg, type Seg } from '../data/mapLayout'
-import { PortfolioStreet, STREET_ORIGIN_Z } from './PortfolioStreet'
+import { PLAZA_R, WORLD_HALF, rings, segs, signs, roadClearance, districtAt, distSeg, ringDim, TUNNEL, TUNNEL_R1, type Seg } from '../data/mapLayout'
+import { Structures } from './Structures'
+import { PortfolioStreet, STREET_ORIGIN_Z, SHOWCASE_RING_R, showcaseRingsWorld } from './PortfolioStreet'
 
 /** 一个盒子实例：位置 / 尺寸 / 绕 Y 旋转 / 颜色 */
 type Box = { p: [number, number, number]; s: [number, number, number]; ry?: number; c?: THREE.Color }
@@ -36,6 +37,7 @@ function Boxes({ items, material }: { items: Box[]; material: THREE.Material }) 
 
 // ---------- 材质（模块级共享） ----------
 const roadMat = new THREE.MeshStandardMaterial({ color: '#121C2A', roughness: 0.5, metalness: 0.6 })
+export const roadDimMat = new THREE.MeshStandardMaterial({ color: '#0C141F', roughness: 0.55, metalness: 0.55 }) // 新路/小巷/外环压暗一档
 const plazaMat = new THREE.MeshStandardMaterial({ color: '#0C1624', roughness: 0.4, metalness: 0.5 })
 const groundMat = new THREE.MeshStandardMaterial({ color: '#03060C', roughness: 0.95 })
 const bodyMat = new THREE.MeshStandardMaterial({ color: colors.building ?? '#0E1824', roughness: 0.7, metalness: 0.3, emissive: '#0A1A2E', emissiveIntensity: 0.35 })
@@ -109,10 +111,21 @@ function onOther(x: number, z: number, self: number) {
   for (let i = 0; i < segs.length; i++) if (i !== self && distSeg(x, z, segs[i]) < segs[i].w / 2 + 0.3) return true
   return false
 }
+const DASH_LEN = 3, DASH_GAP = 3, JUNCTION_CLEAR = 2
+/** 虚线可生成：不在广场、展示光环(半径+1m)、及其他路面(+2m 路口留白)内 */
+function dashOk(x: number, z: number, self: number) {
+  const rr = Math.hypot(x, z)
+  if (rr < PLAZA_R + JUNCTION_CLEAR) return false
+  for (const [cx, cz] of showcaseRingsWorld) if (Math.hypot(x - cx, z - cz) < SHOWCASE_RING_R + 1) return false
+  for (let i = 0; i < rings.length; i++) if (i !== self - 1000 && Math.abs(rr - rings[i].r) < rings[i].w / 2 + JUNCTION_CLEAR) return false
+  for (let i = 0; i < segs.length; i++) if (i !== self && distSeg(x, z, segs[i]) < segs[i].w / 2 + JUNCTION_CLEAR) return false
+  return true
+}
 function buildMarkings() {
-  const edges: Box[] = [], dashes: Box[] = []
+  const edges: Box[] = [], dashes: Box[] = [], edgesDim: Box[] = []
   const E = 2 // 边线分段长度
   segs.forEach((s, i) => {
+    if (s.virtual) return
     const [ax, az] = s.a, [bx, bz] = s.b
     const len = Math.hypot(bx - ax, bz - az)
     const ux = (bx - ax) / len, uz = (bz - az) / len
@@ -120,38 +133,52 @@ function buildMarkings() {
     for (let t = E / 2; t < len; t += E) {
       for (const k of [-1, 1]) {
         const x = ax + ux * t + uz * k * (s.w / 2 - 0.25), z = az + uz * t - ux * k * (s.w / 2 - 0.25)
-        if (!onOther(x, z, i)) edges.push({ p: [x, 0.055, z], s: [0.12, 0.03, E], ry })
+        if (!onOther(x, z, i)) (s.dim ? edgesDim : edges).push({ p: [x, 0.055, z], s: [0.12, 0.03, E], ry })
       }
-      // 主路（≥10m）中心虚线：3m 实 / 3m 空
-      if (s.w >= 10 && !s.guide && Math.floor(t / 3) % 2 === 0) {
-        const x = ax + ux * t, z = az + uz * t
-        if (!onOther(x, z, i)) dashes.push({ p: [x, 0.055, z], s: [0.18, 0.03, E * 0.9], ry })
-      }
-      if (s.guide && s.w >= 12 && Math.floor(t / 3) % 2 === 0) {
-        for (const k of [-1, 1]) { // 有导向带的主街：两条车道虚线
-          const x = ax + ux * t + uz * k * s.w / 4, z = az + uz * t - ux * k * s.w / 4
-          if (!onOther(x, z, i)) dashes.push({ p: [x, 0.055, z], s: [0.14, 0.03, E * 0.9], ry })
-        }
+    }
+  })
+  // 虚线：统一 3m 实 / 3m 空，按整段生成；段的两端与中点都需通过 dashOk 才生成
+  segs.forEach((s, i) => {
+    if (s.virtual) return
+    const [ax, az] = s.a, [bx, bz] = s.b
+    const len = Math.hypot(bx - ax, bz - az)
+    const ux = (bx - ax) / len, uz = (bz - az) / len
+    const ry = Math.atan2(ux, uz)
+    const offs = s.w >= 10 && !s.guide ? [0] : s.guide && s.w >= 12 ? [-s.w / 4, s.w / 4] : []
+    for (const o of offs) {
+      for (let t = DASH_GAP / 2 + DASH_LEN / 2; t + DASH_LEN / 2 < len; t += DASH_LEN + DASH_GAP) {
+        const pt = (d: number): [number, number] => [ax + ux * (t + d) + uz * o, az + uz * (t + d) - ux * o]
+        if (![pt(-DASH_LEN / 2), pt(0), pt(DASH_LEN / 2)].every(([x, z]) => dashOk(x, z, i))) continue
+        const [x, z] = pt(0)
+        dashes.push({ p: [x, 0.055, z], s: [o ? 0.14 : 0.18, 0.03, DASH_LEN], ry })
       }
     }
   })
   rings.forEach((rg, ri) => {
-    for (const rad of [rg.r - rg.w / 2 + 0.25, rg.r + rg.w / 2 - 0.25, rg.r]) {
-      const center = rad === rg.r
+    const rad = rg.r, step = DASH_LEN + DASH_GAP
+    const n = Math.floor((2 * Math.PI * rad) / step)
+    for (let j = 0; j < n; j++) {
+      const a = (j / n) * Math.PI * 2, da = DASH_LEN / 2 / rad
+      if (![a - da, a, a + da].every((b) => dashOk(Math.sin(b) * rad, Math.cos(b) * rad, 1000 + ri))) continue
+      dashes.push({ p: [Math.sin(a) * rad, 0.055, Math.cos(a) * rad], s: [0.18, 0.03, DASH_LEN], ry: a + Math.PI / 2 })
+    }
+  })
+  rings.forEach((rg, ri) => {
+    for (const rad of [rg.r - rg.w / 2 + 0.25, rg.r + rg.w / 2 - 0.25]) {
       const n = Math.round((2 * Math.PI * rad) / E)
       for (let j = 0; j < n; j++) {
-        if (center && j % 3 !== 0) continue
         const a = (j / n) * Math.PI * 2
         const x = Math.sin(a) * rad, z = Math.cos(a) * rad
         if (onOther(x, z, 1000 + ri)) continue
-        ;(center ? dashes : edges).push({ p: [x, 0.055, z], s: [center ? 0.18 : 0.12, 0.03, E * (center ? 0.9 : 1.02)], ry: a + Math.PI / 2 })
+        (ringDim(rg) ? edgesDim : edges).push({ p: [x, 0.055, z], s: [0.12, 0.03, E * 1.02], ry: a + Math.PI / 2 })
       }
     }
   })
-  return { edges, dashes }
+  return { edges, dashes, edgesDim }
 }
 const edgeLineMat = new THREE.MeshBasicMaterial({ color: dim(colors.iceBlue, 0.55), toneMapped: false })
 const dashMat = new THREE.MeshBasicMaterial({ color: dim(colors.coldWhite, 0.45), toneMapped: false })
+const edgeLineDimMat = new THREE.MeshBasicMaterial({ color: dim(colors.iceBlue, 0.28), toneMapped: false }) // 小巷冰蓝，暗一档
 
 // ---------- 广场 ----------
 const plazaLineMat = new THREE.MeshBasicMaterial({ color: dim(colors.iceBlue, 0.3), toneMapped: false })
@@ -209,7 +236,7 @@ function SegRoad({ s, y }: { s: Seg; y: number }) {
   const len = Math.hypot(bx - ax, bz - az) + s.w * 0.5
   const ry = Math.atan2(bx - ax, bz - az)
   return (
-    <mesh position={[(ax + bx) / 2, y, (az + bz) / 2]} rotation={[-Math.PI / 2, 0, ry]} material={roadMat}>
+    <mesh position={[(ax + bx) / 2, y, (az + bz) / 2]} rotation={[-Math.PI / 2, 0, ry]} material={s.dim ? roadDimMat : roadMat}>
       <planeGeometry args={[s.w, len]} />
     </mesh>
   )
@@ -272,7 +299,7 @@ function HoloAd() {
   // 作品街尽头巨型全息广告（面朝南）
   const c = districts.portfolio
   return (
-    <group position={[0, 0, -160]}>
+    <group position={[0, 0, -229]}>
       <RigidBody type="fixed" colliders={false}><CuboidCollider args={[9, 15, 0.8]} position={[0, 15, 0]} /></RigidBody>
       <mesh position={[0, 15, 0]}><boxGeometry args={[18, 30, 1.2]} /><meshStandardMaterial color="#0A1626" emissive={c.accent2} emissiveIntensity={0.18} /></mesh>
       <mesh position={[0, 16, 0.65]}><planeGeometry args={[16, 26]} /><meshBasicMaterial color={dim(c.accent2, 0.5)} toneMapped={false} transparent opacity={0.6} /></mesh>
@@ -286,8 +313,8 @@ function HoloAd() {
 function makeStalls() {
   const stalls: Box[] = [], canopies: Box[] = [], lanterns: Box[] = []
   const amber = districts.aiStall.accent
-  for (let x = 36; x <= 140; x += 9) {
-    if (Math.abs(x - 75) < 12 || Math.abs(x - 102) < 8 || Math.abs(x - 130) < 8) continue // 让出路口
+  for (let x = 36; x <= 200; x += 9) {
+    if (Math.abs(x - 75) < 12 || Math.abs(x - 130) < 8 || Math.abs(x - 180) < 8) continue // 让出路口
     for (const side of [-1, 1]) {
       const z = side * 8.6
       stalls.push({ p: [x, 1.1, z], s: [3.2, 2.2, 2.2] })
@@ -299,10 +326,38 @@ function makeStalls() {
   return { stalls, canopies, lanterns }
 }
 
+/** 地面：西南隧道处挖洞（视觉 Shape 带洞 + 碰撞体用隧道坐标系下 4 块旋转长方体拼接） */
+function Ground({ G }: { G: number }) {
+  const { dir, R0, W } = TUNNEL
+  const R1 = TUNNEL_R1, hw = W / 2
+  const geo = useMemo(() => {
+    const S = G + 10
+    const sh = new THREE.Shape([new THREE.Vector2(-S, -S), new THREE.Vector2(S, -S), new THREE.Vector2(S, S), new THREE.Vector2(-S, S)])
+    const nx = -dir[1], nz = dir[0] // 隧道横向
+    const pt = (u: number, v: number) => new THREE.Vector2(dir[0] * u + nx * v, -(dir[1] * u + nz * v)) // shape(x,y) → world(x, -z)
+    sh.holes.push(new THREE.Path([pt(R0, -hw), pt(R0, hw), pt(R1, hw), pt(R1, -hw)]))
+    return new THREE.ShapeGeometry(sh)
+  }, [G, dir, R0, R1, hw])
+  // 隧道坐标系：u 沿大道、v 横向；旋转使局部 +Z = dir
+  const ry = Math.atan2(dir[0], dir[1])
+  const E = 360
+  return (
+    <>
+      <RigidBody type="fixed" colliders={false} rotation={[0, ry, 0]}>
+        <CuboidCollider args={[(E - hw) / 2, 0.5, E]} position={[-(hw + (E - hw) / 2), -0.5, 0]} />
+        <CuboidCollider args={[(E - hw) / 2, 0.5, E]} position={[hw + (E - hw) / 2, -0.5, 0]} />
+        <CuboidCollider args={[hw, 0.5, (R0 + E) / 2]} position={[0, -0.5, (R0 - E) / 2]} />
+        <CuboidCollider args={[hw, 0.5, (E - R1) / 2]} position={[0, -0.5, (R1 + E) / 2]} />
+      </RigidBody>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} geometry={geo} material={groundMat} />
+    </>
+  )
+}
+
 export function City() {
   const { bodies, roofs, strips } = useMemo(buildCity, [])
   const { stalls, canopies, lanterns } = useMemo(makeStalls, [])
-  const { edges, dashes } = useMemo(buildMarkings, [])
+  const { edges, dashes, edgesDim } = useMemo(buildMarkings, [])
   const { tiles, props, glows } = useMemo(buildPlaza, [])
   // 冷白地面箭头（V 形，指向各街出口）：广场边缘 + 环路路口
   const arrows = useMemo<Box[]>(() => {
@@ -322,7 +377,6 @@ export function City() {
     <group>
       {/* 地面 + 边界墙（车不会掉出世界） */}
       <RigidBody type="fixed" colliders={false}>
-        <CuboidCollider args={[G + 10, 0.5, G + 10]} position={[0, -0.5, 0]} />
         <CuboidCollider args={[G, 4, 1]} position={[0, 4, -G]} />
         <CuboidCollider args={[G, 4, 1]} position={[0, 4, G]} />
         <CuboidCollider args={[1, 4, G]} position={[-G, 4, 0]} />
@@ -332,7 +386,7 @@ export function City() {
         {props.map((b, i) => <CuboidCollider key={'p' + i} args={[b.s[0] / 2, b.s[1] / 2, b.s[2] / 2]} position={b.p} rotation={[0, b.ry ?? 0, 0]} />)}
         {stalls.map((b, i) => <CuboidCollider key={'s' + i} args={[b.s[0] / 2, b.s[1] / 2, b.s[2] / 2]} position={b.p} />)}
       </RigidBody>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} material={groundMat}><planeGeometry args={[G * 2 + 20, G * 2 + 20]} /></mesh>
+      <Ground G={G} />
       <Boxes items={[
         { p: [0, 1.5, -G], s: [G * 2, 3, 0.6] }, { p: [0, 1.5, G], s: [G * 2, 3, 0.6] },
         { p: [-G, 1.5, 0], s: [0.6, 3, G * 2] }, { p: [G, 1.5, 0], s: [0.6, 3, G * 2] },
@@ -340,11 +394,11 @@ export function City() {
 
       {/* 路网 */}
       {rings.map((rg) => (
-        <mesh key={rg.r} position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} material={roadMat}>
-          <ringGeometry args={[rg.r - rg.w / 2, rg.r + rg.w / 2, 128]} />
+        <mesh key={rg.r} position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} material={ringDim(rg) ? roadDimMat : roadMat}>
+          <ringGeometry args={[rg.r - rg.w / 2, rg.r + rg.w / 2, ringDim(rg) ? 256 : 128]} />
         </mesh>
       ))}
-      {segs.map((s, i) => <SegRoad key={i} s={s} y={0.025 + (s.w < 9 ? 0.003 : 0)} />)}
+      {segs.map((s, i) => s.virtual ? null : <SegRoad key={i} s={s} y={0.025 + (s.w < 9 ? 0.003 : 0)} />)}
       <mesh position={[0, 0.035, 0]} rotation={[-Math.PI / 2, 0, 0]} material={plazaMat}><circleGeometry args={[PLAZA_R, 64]} /></mesh>
       <mesh position={[0, 0.045, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[PLAZA_R - 0.5, PLAZA_R - 0.25, 96]} />
@@ -358,6 +412,7 @@ export function City() {
 
       <Boxes items={edges} material={edgeLineMat} />
       <Boxes items={dashes} material={dashMat} />
+      <Boxes items={edgesDim} material={edgeLineDimMat} />
       <PlazaFloor />
       <Boxes items={tiles} material={plazaLineMat} />
       <Boxes items={props} material={bodyMat} />
@@ -381,12 +436,13 @@ export function City() {
 
       <HoloTower />
       <HoloAd />
-      <GateFrame position={[147, 0, 0]} rotationY={-Math.PI / 2} color={districts.aiStall.accent} gap={13} h={9} />
-      <GateFrame position={[-147, 0, 0]} rotationY={Math.PI / 2} color={districts.hidden.accent} gap={11} h={11} />
-      <GateFrame position={[0, 0, 147]} rotationY={Math.PI} color={colors.iceBlue} gap={7.4} h={14} />
+      <GateFrame position={[208, 0, 0]} rotationY={-Math.PI / 2} color={districts.aiStall.accent} gap={13} h={9} />
+      <GateFrame position={[-208, 0, 0]} rotationY={Math.PI / 2} color={districts.hidden.accent} gap={11} h={11} />
+      <GateFrame position={[0, 0, 208]} rotationY={Math.PI} color={colors.iceBlue} gap={7.4} h={14} />
       {/* 隐藏关卡入口：彩蛋岔路尽头的小薄荷门 */}
       <GateFrame position={[-48, 0, -66]} rotationY={-Math.PI / 2} color={districts.hidden.accent} gap={7} h={6} />
 
+      <Structures />
       <group position={[0, 0, STREET_ORIGIN_Z]}>
         <PortfolioStreet />
       </group>

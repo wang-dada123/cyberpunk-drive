@@ -46,7 +46,7 @@ export function Scene() {
     <Canvas
       dpr={dpr}
       frameloop={MANUAL ? 'never' : 'always'}
-      camera={{ position: [0, 6, 12], fov: 50, near: 0.5, far: 170 }}
+      camera={{ position: [0, 6, 12], fov: 50, near: 0.5, far: 180 }}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
       onCreated={({ gl, camera }) => { detectRenderer(gl); if (import.meta.env.DEV || DEBUG) Object.assign(window, { __gl: gl, __cam: camera }) }}
       style={{ width: '100%', height: '100%', background: colors.bg }}

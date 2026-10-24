@@ -26,7 +26,10 @@ export function PerfOverlay() {
   useEffect(() => {
     gl.info.autoReset = false
     const box = document.createElement('div')
-    Object.assign(box.style, { position: 'fixed', right: '8px', bottom: '8px', zIndex: '30', width: '260px', height: '230px',
+    // 手机竖屏：放右上（🎥 按钮下方），避开左下摇杆；桌面：右下
+    const narrow = window.innerWidth < 600
+    Object.assign(box.style, { position: 'fixed', right: '8px', zIndex: '30', width: narrow ? '200px' : '260px', height: '230px',
+      ...(narrow ? { top: '64px' } : { bottom: '8px' }), fontSize: narrow ? '9.5px' : '11px',
       contain: 'strict', background: 'rgba(2,6,12,0.78)', color: '#9fe6ff', font: '11px/1.35 monospace',
       padding: '6px 8px', border: '1px solid #1f5f7a', pointerEvents: 'none', boxSizing: 'border-box', overflow: 'hidden' })
     const t = document.createElement('div'); t.style.whiteSpace = 'pre'
@@ -35,10 +38,14 @@ export function PerfOverlay() {
     txt.current = t; cv.current = c
     return () => { box.remove(); gl.info.autoReset = true }
   }, [gl])
-  useFrame(() => { gl.info.reset() }, -1000)
-  useFrame((_, dt) => {
+  // 整帧合计：每帧最早处先读上一帧（含后处理所有 pass）的累计值，再清零
+  useFrame(() => {
+    gl.info.autoReset = false
     perfStats.calls = gl.info.render.calls
     perfStats.triangles = gl.info.render.triangles
+    gl.info.reset()
+  }, -1000)
+  useFrame((_, dt) => {
     const now = performance.now()
     // 每帧车可视体位移 |Δpos|/dt（匀速应为平线）+ 本帧物理步数
     if (carVisual.current) {
