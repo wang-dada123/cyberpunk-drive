@@ -63,6 +63,8 @@ float vn(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 *
 float fbm(vec2 p){ return 0.5 * vn(p) + 0.3 * vn(p * 2.03 + 7.1) + 0.2 * vn(p * 4.11 + 3.7); }
 `
 /** 6 盏 pointLight 的 XZ（灯下多积水） */
+import { FAKE_LAMP_GLSL, REAL_LIGHTS } from '../utils/fakeLights'
+const LAMP_EMIT = REAL_LIGHTS ? '' : 'totalEmissiveRadiance += (diffuseColor.rgb * RECIPROCAL_PI + 0.05 * gPudL) * gLamp; // 假光斑'
 export const LAMPS_XZ: [number, number][] = [[0, 14], [0, -50], [60, 0], [-60, 0], [0, 112], [0, 140]] // 与 Scene.tsx 的 pointLight 一致
 
 type Edge = { mode: 0 | 1; R?: number; W?: number }
@@ -80,7 +82,8 @@ export function makeAsphalt(color: string, edge: Edge) {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 varying vec3 vWp; varying vec2 vUv0; uniform float uMode; uniform vec2 uRing; uniform vec2 uLamps[6];
-uniform sampler2D uDetail; float gPud; vec4 gD;`)
+uniform sampler2D uDetail; float gPud; vec4 gD; vec3 gLamp; float gPudL;
+${FAKE_LAMP_GLSL}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 {
   vec2 w = vWp.xz;
@@ -93,13 +96,15 @@ uniform sampler2D uDetail; float gPud; vec4 gD;`)
   gPud = smoothstep(thr - 0.01, thr + 0.02, gD.r);
   diffuseColor.rgb *= gD.g * 1.25;
   diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.35, gPud);
+  gLamp = fakeLamp(vWp); gPudL = gPud;
 }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
 roughnessFactor = mix(0.6 + 0.2 * gD.b, 0.1, gPud);`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
 metalnessFactor = mix(0.25, 0.35, gPud);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-totalEmissiveRadiance += gPud * (vec3(0.006, 0.02, 0.035) * (0.4 + gD.a) + vec3(0.03, 0.005, 0.025) * smoothstep(0.7, 0.95, gD.a));`)
+totalEmissiveRadiance += gPud * (vec3(0.006, 0.02, 0.035) * (0.4 + gD.a) + vec3(0.03, 0.005, 0.025) * smoothstep(0.7, 0.95, gD.a));
+${LAMP_EMIT}`)
   }
   m.customProgramCacheKey = () => 'asphalt'
   return m
@@ -116,7 +121,8 @@ export function makePlazaStone(R: number) {
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWp = (modelMatrix * vec4(transformed, 1.0)).xyz;')
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-varying vec3 vWp; uniform float uR; float gGroove; ${NOISE}`)
+varying vec3 vWp; uniform float uR; float gGroove; vec3 gLamp; const float gPudL = 0.0; ${NOISE}
+${FAKE_LAMP_GLSL}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 {
   vec2 w = vWp.xz; float r = length(w); float th = atan(w.x, w.y); // 0 = +Z（出生点方向）
@@ -141,11 +147,13 @@ varying vec3 vWp; uniform float uR; float gGroove; ${NOISE}`)
   float gd = min(ringD, radA);
   gGroove = (1.0 - smoothstep(0.02 - fw * 0.5, 0.02 + fw * 0.5, gd)) * clamp(0.04 / (2.0 * fw), 0.0, 1.0) * step(6.5, r) * step(r, uR - 0.8);
   diffuseColor.rgb *= 1.0 - gGroove * 0.6;
+  gLamp = fakeLamp(vWp);
 }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
 roughnessFactor = 0.45 + 0.2 * vn(vWp.xz * 1.3);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-totalEmissiveRadiance += gGroove * vec3(0.31, 0.76, 0.97) * 0.38; // 比导向箭头低一档`)
+totalEmissiveRadiance += gGroove * vec3(0.31, 0.76, 0.97) * 0.38; // 比导向箭头低一档
+${LAMP_EMIT}`)
   }
   m.customProgramCacheKey = () => 'plazaStone'
   return m

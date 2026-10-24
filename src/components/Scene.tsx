@@ -9,7 +9,7 @@ const MANUAL = import.meta.env.DEV && new URLSearchParams(location.search).has('
 if (MANUAL) Object.assign(window, { __advance: advance })
 import { Physics } from '@react-three/rapier'
 import { EffectComposer, Bloom } from '@react-three/postprocessing'
-import { colors, bloom, fogDensity, districts } from '../theme/colors'
+import { colors, bloom, fogDensity } from '../theme/colors'
 import { City } from './City'
 import { StaticBatch } from './StaticBatch'
 import { Car } from './Car'
@@ -20,6 +20,7 @@ import { isMobile } from '../utils/isMobile'
 import { detectRenderer, rendererInfo } from '../utils/rendererCheck'
 import { AB, tierState, onTier, tierFromRenderer, demote, displayHz } from '../utils/tier'
 import { GroundBake } from './GroundFX'
+import { LAMPS, REAL_LIGHTS } from '../utils/fakeLights'
 import { useEffect } from 'react'
 import { useFrame } from '@react-three/fiber'
 
@@ -40,20 +41,12 @@ function AutoTier() {
 function useTier() { const [t, setT] = useState(tierState.tier); useEffect(() => onTier(setT), []); return t }
 
 function Lights() {
-  // 预算：全场 pointLight = 6（广场 1 + 四区各 1 + 窄巷门 1），桌面/手机一致
-  const pl: Array<[number, number, number, string, number, number]> = [
-    [0, 6, 14, colors.iceBlue, 1.0, 22], // 广场 / 出生点
-    [0, 5, -50, districts.portfolio.accent2, 0.9, 20], // 作品街
-    [60, 4, 0, districts.aiStall.accent, 1.0, 20], // AI 摊位
-    [-60, 4, 0, districts.hidden.accent, 0.8, 18], // 彩蛋区
-    [0, 4, 112, colors.iceBlue, 0.9, 14], // 雨夜窄巷
-    [0, 8, 140, colors.iceBlue, 1.2, 18], // 窄巷尽头门
-  ]
+  // 6 盏点光源已编译为着色器常量假光（utils/fakeLights.ts）；?ab=reallights 对照
   return (
     <>
       <DistrictAtmosphere />
       <directionalLight position={[0, 25, -60]} intensity={0.25} color="#9FC9FF" />
-      {!AB.has('lights') && pl.map(([x, y, z, c, i, d]) => <pointLight key={x + ',' + z} position={[x, y, z]} color={c} intensity={i} distance={d} />)}
+      {REAL_LIGHTS && !AB.has('lights') && LAMPS.map(([x, y, z, c, i, d]) => <pointLight key={x + ',' + z} position={[x, y, z]} color={c} intensity={i} distance={d} />)}
     </>
   )
 }
@@ -69,7 +62,7 @@ export function Scene() {
       dpr={dpr}
       frameloop={MANUAL ? 'never' : 'always'}
       camera={{ position: [0, 6, 12], fov: 50, near: 0.5, far: 180 }}
-      gl={{ antialias: true, powerPreference: 'high-performance' }}
+      gl={{ antialias: AB.has('bloom'), /* 场景走 EffectComposer（RT 无 MSAA），默认帧缓冲 MSAA 只浪费一次全屏 resolve */ powerPreference: 'high-performance' }}
       onCreated={({ gl, camera }) => { detectRenderer(gl); tierFromRenderer(rendererInfo.name); if (import.meta.env.DEV || DEBUG) Object.assign(window, { __gl: gl, __cam: camera }) }}
       style={{ width: '100%', height: '100%', background: colors.bg }}
     >

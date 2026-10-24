@@ -14,7 +14,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
  */
 export const CHUNK = 60      // 普通网格合批块
 export const INST_CHUNK = 120 // 实例拆块（太细会增加 draw call）
-export const INST_SPLIT_MIN = 48
+export const INST_SPLIT_MIN = Infinity // v3.2：不再拆块——全场三角形仅 ~6万，拆块让 draw call 从 7 变 ~47，集显上 draw call 比顶点贵
 export const batchStats = { meshesIn: 0, mergedOut: 0, instIn: 0, instOut: 0, texts: 0 }
 
 const _v = new THREE.Vector3()
@@ -22,6 +22,16 @@ const _m = new THREE.Matrix4()
 // 网格偏移半格：出生点/广场落在单一块中心，而非四块交界
 const ck = (x: number, z: number, c = CHUNK, off = 0.5) => `${Math.floor(x / c + off)},${Math.floor(z / c + off)}`
 const sig = (g: THREE.BufferGeometry) => Object.keys(g.attributes).sort().join('|') + (g.index ? '#i' : '#n')
+
+/** 同参数的无贴图材质视为同一材质（JSX 内联 <meshBasicMaterial> 每处一个 uuid，否则无法合批） */
+const f4 = (c?: THREE.Color) => (c ? `${c.r.toFixed(4)},${c.g.toFixed(4)},${c.b.toFixed(4)}` : '-')
+function matKey(m: THREE.Material) {
+  const a = m as THREE.MeshStandardMaterial & THREE.MeshBasicMaterial
+  if (m.onBeforeCompile.toString() !== THREE.Material.prototype.onBeforeCompile.toString()) return m.uuid
+  for (const v of Object.values(m)) if ((v as THREE.Texture)?.isTexture) return m.uuid
+  if (m.type !== 'MeshBasicMaterial' && m.type !== 'MeshStandardMaterial') return m.uuid
+  return [m.type, f4(a.color), f4(a.emissive), a.emissiveIntensity, a.roughness, a.metalness, m.transparent, m.opacity, m.side, m.blending, m.depthWrite, m.depthTest, m.toneMapped, a.fog, a.wireframe, m.vertexColors, m.polygonOffset, m.polygonOffsetFactor, m.alphaTest, m.visible].join('|')
+}
 
 function isText(o: THREE.Object3D) {
   return 'sdfGlyphSize' in o || (o as unknown as { isTroikaText?: boolean }).isTroikaText === true
@@ -56,7 +66,7 @@ export function StaticBatch({ children }: { children: ReactNode }) {
         const g = mesh.geometry
         if (!g.boundingSphere) g.computeBoundingSphere()
         _v.copy(g.boundingSphere!.center).applyMatrix4(mesh.matrixWorld)
-        const key = `${mesh.material.uuid}|${sig(g)}|${ck(_v.x, _v.z)}|${mesh.castShadow}${mesh.receiveShadow}`
+        const key = `${matKey(mesh.material)}|${sig(g)}|${ck(_v.x, _v.z)}|${mesh.castShadow}${mesh.receiveShadow}`
         let e = groups.get(key)
         if (!e) groups.set(key, (e = { mat: mesh.material as THREE.Material, geos: [], srcs: [] }))
         e.geos.push(g.clone().applyMatrix4(mesh.matrixWorld)); e.srcs.push(mesh)
