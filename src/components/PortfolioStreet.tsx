@@ -1,3 +1,4 @@
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Text } from '@react-three/drei'
@@ -49,11 +50,12 @@ const slots: Slot[] = ZS.flatMap((z, k) =>
 const frameMat = new THREE.MeshStandardMaterial({ color: '#0A111C', emissive: D.accent2, emissiveIntensity: 0.05, metalness: 0.5, roughness: 0.4 })
 const outlineMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(D.accent2).multiplyScalar(1.4), toneMapped: false })
 const thumbMat = new THREE.MeshBasicMaterial({ color: '#13304A', toneMapped: false })
-const ringMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(D.accent).multiplyScalar(1.1), toneMapped: false, transparent: true, opacity: 0.85 })
+const ringMat = new THREE.MeshBasicMaterial({ color: new THREE.Color('#64FFDA').multiplyScalar(0.8), toneMapped: false }) // 低于 Bloom 阈值
 const chipMat = new THREE.MeshBasicMaterial({ color: '#0F1E2E', toneMapped: false })
 const boxGeo = new THREE.BoxGeometry(1, 1, 1)
 const planeGeo = new THREE.PlaneGeometry(1, 1)
-const ringGeo = new THREE.RingGeometry(RING_R - 0.07, RING_R, 48)
+// 细虚线圈（视觉半径 0.9m，触发半径仍为 RING_R）：20 段弧合并为一个几何
+const ringGeo = mergeGeometries(Array.from({ length: 20 }, (_, i) => new THREE.RingGeometry(0.87, 0.9, 4, 1, (i / 20) * Math.PI * 2, (Math.PI * 2) / 20 * 0.55)))!
 
 const THUMB_W = 2.6
 const THUMB_H = THUMB_W * (9 / 16)

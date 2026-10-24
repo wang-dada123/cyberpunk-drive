@@ -17,7 +17,7 @@ const carSpd = new Float32Array(N), steps = new Uint8Array(N)
 const _cp = new THREE.Vector3(), _lp = new THREE.Vector3()
 let head = 0, filled = 0, acc = 0, hasLp = false
 const COMMON_HZ = [60, 75, 90, 100, 120, 144, 165, 240]
-export const perfStats = { calls: 0, triangles: 0, programs: 0, fps: 0, low1: 0, max5s: 0, hz: 0 }
+export const perfStats = { calls: 0, triangles: 0, programs: 0, fps: 0, low1: 0, max5s: 0, hz: 0, nonFinite: 0 }
 
 export function PerfOverlay() {
   const gl = useThree((s) => s.gl)
@@ -27,12 +27,12 @@ export function PerfOverlay() {
     gl.info.autoReset = false
     const box = document.createElement('div')
     // 手机竖屏：放右上（🎥 按钮下方），避开左下摇杆；桌面：右下
-    const narrow = window.innerWidth < 600
-    Object.assign(box.style, { position: 'fixed', right: '8px', zIndex: '30', width: narrow ? '200px' : '260px', height: '230px',
+    const narrow = window.innerWidth < 600 || window.innerHeight < 500 // 竖屏手机或横屏矮屏：右上
+    Object.assign(box.style, { position: 'fixed', right: '8px', zIndex: '30', width: narrow ? '230px' : '330px', height: narrow ? '250px' : '240px',
       ...(narrow ? { top: '64px' } : { bottom: '8px' }), fontSize: narrow ? '9.5px' : '11px',
       contain: 'strict', background: 'rgba(2,6,12,0.78)', color: '#9fe6ff', font: '11px/1.35 monospace',
       padding: '6px 8px', border: '1px solid #1f5f7a', pointerEvents: 'none', boxSizing: 'border-box', overflow: 'hidden' })
-    const t = document.createElement('div'); t.style.whiteSpace = 'pre'
+    const t = document.createElement('div'); t.style.whiteSpace = 'pre-wrap'; t.style.wordBreak = 'break-all'
     const c = document.createElement('canvas'); c.width = G; c.height = 100
     box.append(t, c); document.body.appendChild(box)
     txt.current = t; cv.current = c
@@ -41,8 +41,11 @@ export function PerfOverlay() {
   // 整帧合计：每帧最早处先读上一帧（含后处理所有 pass）的累计值，再清零
   useFrame(() => {
     gl.info.autoReset = false
-    perfStats.calls = gl.info.render.calls
-    perfStats.triangles = gl.info.render.triangles
+    // 非有限值（如未同步的 troika instanceCount=Infinity）记 0 并计数，面板可见
+    const c = gl.info.render.calls, t = gl.info.render.triangles
+    if (!Number.isFinite(c) || !Number.isFinite(t)) perfStats.nonFinite++
+    perfStats.calls = Number.isFinite(c) ? c : 0
+    perfStats.triangles = Number.isFinite(t) ? t : 0
     gl.info.reset()
   }, -1000)
   useFrame((_, dt) => {
@@ -73,8 +76,8 @@ export function PerfOverlay() {
       `FPS ${perfStats.fps.toFixed(1)}  1%low ${perfStats.low1.toFixed(1)}\n` +
       `avg ${(sum / n).toFixed(2)}ms  max5s ${mx.toFixed(1)}ms\n` +
       `刷新率≈${perfStats.hz.toFixed(0)}Hz (中位帧)\n` +
-      `calls ${perfStats.calls}  tris ${(perfStats.triangles / 1000).toFixed(1)}k  prog ${perfStats.programs}\n` +
-      rendererInfo.name.slice(0, 40) + '\n' +
+      `calls ${perfStats.calls}  tris ${(perfStats.triangles / 1000).toFixed(1)}k  prog ${perfStats.programs}  nonFinite ${perfStats.nonFinite}\n` +
+      rendererInfo.name.replace(/^ANGLE \(/, "").slice(0, 90) + '\n' +
       (COMMON_HZ.some((h) => Math.abs(perfStats.hz - h) / h < 0.04) ? '' : '⚠ 刷新率非常见值，可能被效率模式限帧\n') +
       `视角 ${camState.mode} 切档${camStats.switches}次 来源:${camStats.lastSource} NaN:${camStats.nan}\n` +
       `车速曲线(绿,m/s) 物理步/帧(橙)`

@@ -11,6 +11,8 @@ export function detectRenderer(gl: WebGLRenderer) {
     rendererInfo.name = String(ext ? ctx.getParameter(ext.UNMASKED_RENDERER_WEBGL) : ctx.getParameter(ctx.RENDERER))
   } catch { /* 部分浏览器禁用该扩展 */ }
   rendererInfo.software = SOFT.test(rendererInfo.name)
+  // ?shot：验收截图模式，不显示提示条
+  if (new URLSearchParams(location.search).has('shot')) return
   if (!rendererInfo.software || document.getElementById('hw-accel-tip')) return
   const bar = document.createElement('div')
   bar.id = 'hw-accel-tip'

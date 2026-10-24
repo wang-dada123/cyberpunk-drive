@@ -2,8 +2,12 @@ import { useLayoutEffect, useMemo, useRef } from 'react'
 import { CuboidCollider, CylinderCollider, RigidBody } from '@react-three/rapier'
 import { Text } from '@react-three/drei'
 import * as THREE from 'three'
+import { makeAsphalt, makePlazaStone, SpawnArrows } from './GroundFX'
+import { Signposts, LandmarkBeacons } from './Nav'
+import { NAV, SPAWN_PATHS } from '../data/nav'
+const SPAWN_ARROW_PATHS = SPAWN_PATHS.map((p) => ({ pts: p.pts, color: NAV[p.id].color }))
 import { colors, districts, type DistrictId } from '../theme/colors'
-import { PLAZA_R, WORLD_HALF, rings, segs, signs, roadClearance, districtAt, distSeg, ringDim, TUNNEL, TUNNEL_R1, type Seg } from '../data/mapLayout'
+import { PLAZA_R, WORLD_HALF, rings, segs, roadClearance, districtAt, distSeg, ringDim, TUNNEL, TUNNEL_R1, type Seg } from '../data/mapLayout'
 import { Structures } from './Structures'
 import { PortfolioStreet, STREET_ORIGIN_Z, SHOWCASE_RING_R, showcaseRingsWorld } from './PortfolioStreet'
 
@@ -36,9 +40,15 @@ function Boxes({ items, material }: { items: Box[]; material: THREE.Material }) 
 }
 
 // ---------- 材质（模块级共享） ----------
-const roadMat = new THREE.MeshStandardMaterial({ color: '#121C2A', roughness: 0.5, metalness: 0.6 })
-export const roadDimMat = new THREE.MeshStandardMaterial({ color: '#0C141F', roughness: 0.55, metalness: 0.55 }) // 新路/小巷/外环压暗一档
-const plazaMat = new THREE.MeshStandardMaterial({ color: '#0C1624', roughness: 0.4, metalness: 0.5 })
+// 沥青：程序化（噪声粗糙度 / 不规则拼缝 / 积水假反射），见 GroundFX
+const roadMat = makeAsphalt('#1A2029', { mode: 0 })
+export const roadDimMat = makeAsphalt('#141920', { mode: 0 }) // 新路/小巷/外环压暗一档
+const plazaMat = makePlazaStone(PLAZA_R)
+const ringMats = new Map<number, THREE.Material>()
+const ringMat = (r: number, w: number, dimmed: boolean) => {
+  if (!ringMats.has(r)) ringMats.set(r, makeAsphalt(dimmed ? '#141920' : '#1A2029', { mode: 1, R: r, W: w }))
+  return ringMats.get(r)!
+}
 const groundMat = new THREE.MeshStandardMaterial({ color: '#03060C', roughness: 0.95 })
 const bodyMat = new THREE.MeshStandardMaterial({ color: colors.building ?? '#0E1824', roughness: 0.7, metalness: 0.3, emissive: '#0A1A2E', emissiveIntensity: 0.35 })
 const glowMat = new THREE.MeshBasicMaterial({ toneMapped: false }) // 颜色走 instanceColor
@@ -181,16 +191,8 @@ const dashMat = new THREE.MeshBasicMaterial({ color: dim(colors.coldWhite, 0.45)
 const edgeLineDimMat = new THREE.MeshBasicMaterial({ color: dim(colors.iceBlue, 0.28), toneMapped: false }) // 小巷冰蓝，暗一档
 
 // ---------- 广场 ----------
-const plazaLineMat = new THREE.MeshBasicMaterial({ color: dim(colors.iceBlue, 0.3), toneMapped: false })
 function buildPlaza() {
-  const tiles: Box[] = [], props: Box[] = [], glows: Box[] = []
-  // 放射分格线（避开出生点车道）
-  for (let k = 0; k < 24; k++) {
-    const a = (k / 24) * Math.PI * 2
-    const r0 = 7, r1 = PLAZA_R - 1
-    const m = (r0 + r1) / 2
-    tiles.push({ p: [Math.sin(a) * m, 0.05, Math.cos(a) * m], s: [0.08, 0.02, r1 - r0], ry: a })
-  }
+  const props: Box[] = [], glows: Box[] = []
   // 边缘：花坛 / 长椅 / 全息亭交替，放在 22.5°+45k（避开四条主街和斜向大道）
   for (let k = 0; k < 8; k++) {
     const a = Math.PI / 8 + (k * Math.PI) / 4
@@ -211,23 +213,7 @@ function buildPlaza() {
       glows.push({ p: [x, 2.85, z], s: [1.6, 0.08, 1.6], ry: a, c: dim(colors.iceBlue, 1.3) })
     }
   }
-  return { tiles, props, glows }
-}
-function PlazaFloor() {
-  return (
-    <>
-      {[7, 13, 19.5].map((r) => (
-        <mesh key={r} position={[0, 0.048, 0]} rotation={[-Math.PI / 2, 0, 0]} material={plazaLineMat}>
-          <ringGeometry args={[r - 0.12, r + 0.12, 96]} />
-        </mesh>
-      ))}
-      {/* 内圈深色石材 + 外圈拼砖色差 */}
-      <mesh position={[0, 0.04, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[13, 19.5, 96]} />
-        <meshStandardMaterial color="#17243A" roughness={0.45} metalness={0.5} />
-      </mesh>
-    </>
-  )
+  return { props, glows }
 }
 
 // ---------- 路面 ----------
@@ -358,20 +344,7 @@ export function City() {
   const { bodies, roofs, strips } = useMemo(buildCity, [])
   const { stalls, canopies, lanterns } = useMemo(makeStalls, [])
   const { edges, dashes, edgesDim } = useMemo(buildMarkings, [])
-  const { tiles, props, glows } = useMemo(buildPlaza, [])
-  // 冷白地面箭头（V 形，指向各街出口）：广场边缘 + 环路路口
-  const arrows = useMemo<Box[]>(() => {
-    const out: Box[] = []
-    const c = dim(colors.coldWhite, 0.9)
-    for (const R of [24, 66]) for (const [dx, dz] of [[0, -1], [1, 0], [-1, 0], [0, 1]]) {
-      const yaw = Math.atan2(dx, dz) // 箭头指向
-      for (const k of [-1, 1]) {
-        const a = yaw + k * 0.7
-        out.push({ p: [dx * R - Math.sin(a) * 0.9 + k * 0 , 0.07, dz * R - Math.cos(a) * 0.9], s: [0.35, 0.04, 2.2], ry: a, c })
-      }
-    }
-    return out
-  }, [])
+  const { props, glows } = useMemo(buildPlaza, []) // 旧放射分格线 tiles 已由石材 shader 取代
   const G = WORLD_HALF
   return (
     <group>
@@ -394,7 +367,7 @@ export function City() {
 
       {/* 路网 */}
       {rings.map((rg) => (
-        <mesh key={rg.r} position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} material={ringDim(rg) ? roadDimMat : roadMat}>
+        <mesh key={rg.r} position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} material={ringMat(rg.r, rg.w, ringDim(rg))}>
           <ringGeometry args={[rg.r - rg.w / 2, rg.r + rg.w / 2, ringDim(rg) ? 256 : 128]} />
         </mesh>
       ))}
@@ -413,26 +386,20 @@ export function City() {
       <Boxes items={edges} material={edgeLineMat} />
       <Boxes items={dashes} material={dashMat} />
       <Boxes items={edgesDim} material={edgeLineDimMat} />
-      <PlazaFloor />
-      <Boxes items={tiles} material={plazaLineMat} />
       <Boxes items={props} material={bodyMat} />
       <Boxes items={glows} material={glowMat} />
       {/* 建筑（实例化）+ 灯带 + 导向带 + 箭头 */}
       <Boxes items={bodies} material={bodyMat} />
       <Boxes items={roofs} material={glowMat} />
       <Boxes items={strips} material={glowMat} />
-      <Boxes items={arrows} material={glowMat} />
+      {/* 出生点前方流光小箭头（替换原白色大 V 箭头） */}
+      <SpawnArrows paths={SPAWN_ARROW_PATHS} />
+      <Signposts />
+      <LandmarkBeacons />
       <Boxes items={stalls} material={bodyMat} />
       <Boxes items={canopies} material={glowMat} />
       <Boxes items={lanterns} material={glowMat} />
 
-      {/* 路口路牌（冷白 + 街区色） */}
-      {signs.map((s, i) => (
-        <group key={i} position={[s.p[0], 0, s.p[1]]} rotation={[0, s.rot, 0]}>
-          <mesh position={[0, 2.5, 0]}><boxGeometry args={[0.15, 5, 0.15]} /><meshBasicMaterial color={dim(colors.coldWhite, 0.4)} /></mesh>
-          <Text position={[0, 5.4, 0.1]} fontSize={0.9} color={s.color} anchorX="center" outlineWidth={0.02} outlineColor="#02060C">{s.text}</Text>
-        </group>
-      ))}
 
       <HoloTower />
       <HoloAd />
