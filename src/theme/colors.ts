@@ -10,13 +10,13 @@ export const colors = {
   ground: '#070D18',
   building: '#0E1824',
   carBody: '#1C2330',
-  tail: '#FF2A2A',
+  tail: '#00B0FF',
 } as const
 
 export const bloom = {
   intensity: 0.8,
   threshold: 0.75,
-  tail: '#FF2A2A',
+  tail: '#00B0FF',
 } as const
 
 export const fogDensity = 0.022 // 俯视远机位下由 0.035 下调，避免发闷

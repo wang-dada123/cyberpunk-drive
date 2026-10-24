@@ -375,7 +375,7 @@ export function City() {
       <mesh position={[0, 0.035, 0]} rotation={[-Math.PI / 2, 0, 0]} material={plazaMat}><circleGeometry args={[PLAZA_R, 64]} /></mesh>
       <mesh position={[0, 0.045, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[PLAZA_R - 0.5, PLAZA_R - 0.25, 96]} />
-        <meshBasicMaterial color={dim(colors.iceBlue, 1.2)} toneMapped={false} />
+        <meshBasicMaterial color={dim(colors.iceBlue, 0.32)} toneMapped={false} /> // 广场外圈压暗，减同心圆抢眼
       </mesh>
       {/* 环路内侧虚线感的细光圈 */}
       <mesh position={[0, 0.04, 0]} rotation={[-Math.PI / 2, 0, 0]}>

@@ -24,20 +24,29 @@ void main(){
   float pn = 0.6 * vw(pw, vec2(0.6), vec2(11.3)) + 0.28 * vw(pw, vec2(1.7), vec2(3.1)) + 0.12 * vw(pw, vec2(4.0), vec2(5.7)); // 主尺度≈1m
   float g = vw(w, vec2(7.0), vec2(0.0)), big = fb(w, 0.125, vec2(0.0));
   float col = 0.86 + 0.14 * g + 0.18 * (big - 0.5);
-  vec2 q = w + (vec2(fb(w, 0.075, vec2(0.0)), fb(w, 0.075, vec2(5.0))) - 0.5) * 5.0;
-  const float RH = 80.0 / 17.0, RL = 80.0 / 13.0;
-  float row = mod(floor(q.y / RH), 17.0);
+  // 拼缝：两套错开尺度 + 强域扭曲，避免规则网格感；对比再压一档
+  vec2 q = w + (vec2(fb(w, 0.11, vec2(0.0)), fb(w, 0.11, vec2(5.0))) - 0.5) * 9.0;
+  vec2 q2 = w + (vec2(fb(w, 0.07, vec2(2.0)), fb(w, 0.07, vec2(8.0))) - 0.5) * 6.0;
+  const float RH = 80.0 / 11.0, RL = 80.0 / 7.0;   // 更大块，缝更稀
+  const float RH2 = 80.0 / 19.0, RL2 = 80.0 / 15.0;
+  float row = mod(floor(q.y / RH), 11.0);
   float sx = abs(fract((q.x + h21(vec2(row, 3.0)) * RL) / RL) - 0.5) * RL;
   float sy = abs(fract(q.y / RH) - 0.5) * RH;
   float sd = min(RL * 0.5 - sx, RH * 0.5 - sy);
-  float seam = 1.0 - (1.0 - smoothstep(0.012, 0.06, sd)) * (0.35 + 0.3 * vw(w, vec2(0.8), vec2(0.0)));
-  float cr = abs(vw(w, vec2(0.9), vec2(21.0)) - 0.5);
-  seam *= 1.0 - (1.0 - smoothstep(0.004, 0.02, cr)) * 0.35 * step(0.55, vw(w, vec2(0.2), vec2(0.0)));
+  float row2 = mod(floor(q2.x / RL2), 15.0);
+  float sx2 = abs(fract((q2.y + h21(vec2(row2, 7.0)) * RH2) / RH2) - 0.5) * RH2;
+  float sy2 = abs(fract(q2.x / RL2) - 0.5) * RL2;
+  float sd2 = min(RH2 * 0.5 - sx2, RL2 * 0.5 - sy2);
+  float seamA = 1.0 - (1.0 - smoothstep(0.02, 0.09, sd)) * (0.18 + 0.14 * vw(w, vec2(0.55), vec2(0.0)));
+  float seamB = 1.0 - (1.0 - smoothstep(0.015, 0.07, sd2)) * (0.12 + 0.1 * vw(w, vec2(0.9), vec2(4.0)));
+  float seam = min(seamA, seamB);
+  float cr = abs(vw(w, vec2(0.55), vec2(21.0)) - 0.5);
+  seam *= 1.0 - (1.0 - smoothstep(0.006, 0.028, cr)) * 0.22 * step(0.6, vw(w, vec2(0.15), vec2(0.0)));
   float rough = fb(w, 0.5, vec2(0.0));
   float st = vw(w, vec2(0.45, 0.0625), vec2(2.0));
   gl_FragColor = vec4(pn, col * seam / 1.25, rough, st);
 }`
-let baked = false
+let baked = false // v33.1 seam
 export function bakeGround(gl: THREE.WebGLRenderer) {
   if (baked) return; baked = true
   const t0 = performance.now()
@@ -171,23 +180,23 @@ ${CAR_SPOT_GLSL}`)
   diffuseColor.rgb *= 0.9 + 0.2 * hv;
   diffuseColor.rgb += vec3(-0.004, 0.0, 0.006) * (h21(vec2(ai, band) + 3.0) - 0.5) * 4.0;
   diffuseColor.rgb *= 0.92 + 0.08 * vn(w * 3.0);
-  diffuseColor.rgb *= mix(0.45, 1.0, seam);
+  diffuseColor.rgb *= mix(0.88, 1.0, seam); // 缝对比压低，去网格感
   // 冰蓝线槽（宽 4cm）：每 4 块一条
   float ringD = abs(fract(r / 8.0 + 0.5) - 0.5) * 8.0;
   float radA = abs(fract(th / 6.2832 * 16.0 + 0.5) - 0.5) * (6.2832 * r / 16.0);
   float gd = min(ringD, radA);
-  gGroove = (1.0 - smoothstep(0.02 - fw * 0.5, 0.02 + fw * 0.5, gd)) * clamp(0.04 / (2.0 * fw), 0.0, 1.0) * step(6.5, r) * step(r, uR - 0.8);
-  diffuseColor.rgb *= 1.0 - gGroove * 0.6;
+  gGroove = (1.0 - smoothstep(0.025 - fw * 0.5, 0.025 + fw * 0.5, gd)) * clamp(0.04 / (2.0 * fw), 0.0, 1.0) * step(10.0, r) * step(r, uR - 1.5);
+  diffuseColor.rgb *= 1.0 - gGroove * 0.12; // 线槽暗化减弱
   gLamp = fakeLamp(vWp);
 }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
 roughnessFactor = 0.45 + 0.2 * vn(vWp.xz * 1.3);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-totalEmissiveRadiance += gGroove * vec3(0.31, 0.76, 0.97) * 0.38; // 比导向箭头低一档
+totalEmissiveRadiance += gGroove * vec3(0.31, 0.76, 0.97) * 0.06; // 再压，避免同心圆抢导向箭头
 ${LAMP_EMIT}
 ${SPOT_EMIT}`)
   }
-  m.customProgramCacheKey = () => 'plazaStone'
+  m.customProgramCacheKey = () => 'plazaStone3'
   return m
 }
 
