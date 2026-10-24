@@ -150,6 +150,12 @@ export function FollowCamera() {
       if (scene.fog) (scene.fog as THREE.FogExp2).density = 0.0006
       cam.far = 800; cam.updateProjectionMatrix(); return
     }
+    const pin = import.meta.env.DEV ? (window as unknown as { __camPin?: number[] }).__camPin : undefined
+    if (pin && carVisual.current) { // 测试用：车本地坐标固定机位
+      const o = carVisual.current; o.updateWorldMatrix(true, false)
+      cam.position.set(pin[0], pin[1], pin[2]).applyMatrix4(o.matrixWorld)
+      const t = new THREE.Vector3(0, pin[3] ?? 0.3, pin[4] ?? 0).applyMatrix4(o.matrixWorld); cam.lookAt(t); return
+    }
     const dt = clamp(rawDt, 0, 0.05)
     if (dt <= 0) return
     const obj = carVisual.current

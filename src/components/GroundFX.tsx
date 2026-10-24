@@ -8,6 +8,7 @@ import { AB } from '../utils/tier'
 export const groundRT = new THREE.WebGLRenderTarget(1024, 1024, { generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping, depthBuffer: false })
 groundRT.texture.wrapS = groundRT.texture.wrapT = THREE.RepeatWrapping
 groundRT.texture.anisotropy = 4
+if (import.meta.env.DEV) Object.assign(window, { __groundRT: groundRT })
 const BAKE_FS = /* glsl */ `
 varying vec2 vUv;
 float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
@@ -19,7 +20,8 @@ float vw(vec2 w, vec2 s, vec2 off){ return vnp(w * s + off, 80.0 * s); }
 float fb(vec2 w, float s, vec2 off){ return 0.5 * vw(w, vec2(s), off) + 0.3 * vw(w, vec2(2.0 * s), off + 7.1) + 0.2 * vw(w, vec2(4.0 * s), off + 3.7); }
 void main(){
   vec2 w = vUv * 80.0;
-  float pn = 0.62 * vw(w, vec2(0.8), vec2(11.3)) + 0.38 * vw(w, vec2(2.4), vec2(3.1));
+  vec2 pw = w + (vec2(fb(w, 0.35, vec2(1.0)), fb(w, 0.35, vec2(9.0))) - 0.5) * 2.2; // 域扭曲：打散值噪声格子感 → 有机不规则边
+  float pn = 0.6 * vw(pw, vec2(0.6), vec2(11.3)) + 0.28 * vw(pw, vec2(1.7), vec2(3.1)) + 0.12 * vw(pw, vec2(4.0), vec2(5.7)); // 主尺度≈1m
   float g = vw(w, vec2(7.0), vec2(0.0)), big = fb(w, 0.125, vec2(0.0));
   float col = 0.86 + 0.14 * g + 0.18 * (big - 0.5);
   vec2 q = w + (vec2(fb(w, 0.075, vec2(0.0)), fb(w, 0.075, vec2(5.0))) - 0.5) * 5.0;
@@ -64,6 +66,15 @@ float fbm(vec2 p){ return 0.5 * vn(p) + 0.3 * vn(p * 2.03 + 7.1) + 0.2 * vn(p * 
 `
 /** 6 盏 pointLight 的 XZ（灯下多积水） */
 import { FAKE_LAMP_GLSL, REAL_LIGHTS } from '../utils/fakeLights'
+import { LOOK, neonEnvTex, carSpotUniform } from '../utils/look'
+const PD = LOOK.puddle, SP = LOOK.car.spot
+const g3 = (c: string) => { const k = new THREE.Color(c); return `vec3(${k.r.toFixed(4)},${k.g.toFixed(4)},${k.b.toFixed(4)})` }
+/** 头灯地面光斑（椭圆，车前 near–far，宽 width，中心亮度 k，边缘柔化） */
+const CAR_SPOT_GLSL = `uniform vec4 uCar;
+float carSpot(vec2 w){ vec2 d = w - uCar.xy; float a = dot(d, uCar.zw); float b = dot(d, vec2(-uCar.w, uCar.z));
+  float r2 = pow((a - ${((SP.near+SP.far)/2).toFixed(2)}) / ${((SP.far-SP.near)/2).toFixed(2)}, 2.0) + pow(b / ${(SP.width/2).toFixed(2)}, 2.0);
+  float s = 1.0 - smoothstep(0.0, 1.0, r2); return ${SP.k.toFixed(3)} * s * s; }`
+const SPOT_EMIT = `totalEmissiveRadiance += ${g3(SP.color)} * carSpot(vWp.xz) * (${SP.gain.toFixed(3)} + ${(SP.pudGain-SP.gain).toFixed(3)} * gPudL);`
 const LAMP_EMIT = REAL_LIGHTS ? '' : 'totalEmissiveRadiance += (diffuseColor.rgb * RECIPROCAL_PI + 0.05 * gPudL) * gLamp; // 假光斑'
 export const LAMPS_XZ: [number, number][] = [[0, 14], [0, -50], [60, 0], [-60, 0], [0, 112], [0, 140]] // 与 Scene.tsx 的 pointLight 一致
 
@@ -74,6 +85,8 @@ export function makeAsphalt(color: string, edge: Edge) {
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uMode = { value: edge.mode }
     sh.uniforms.uDetail = { value: groundRT.texture }
+    sh.uniforms.uEnv = { value: neonEnvTex }
+    sh.uniforms.uCar = carSpotUniform
     sh.uniforms.uRing = { value: new THREE.Vector2(edge.R ?? 0, (edge.W ?? 1) / 2) }
     sh.uniforms.uLamps = { value: LAMPS_XZ.slice(0, 6).concat(Array(Math.max(0, 6 - LAMPS_XZ.length)).fill([9999, 9999])).map(([x, z]) => new THREE.Vector2(x, z)) }
     sh.vertexShader = sh.vertexShader
@@ -82,28 +95,44 @@ export function makeAsphalt(color: string, edge: Edge) {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 varying vec3 vWp; varying vec2 vUv0; uniform float uMode; uniform vec2 uRing; uniform vec2 uLamps[6];
-uniform sampler2D uDetail; float gPud; vec4 gD; vec3 gLamp; float gPudL;
-${FAKE_LAMP_GLSL}`)
+uniform sampler2D uDetail; uniform sampler2D uEnv; float gPud; float gPudR; float gLit; vec4 gD; vec3 gLamp; float gPudL;
+${FAKE_LAMP_GLSL}
+${CAR_SPOT_GLSL}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 {
   vec2 w = vWp.xz;
   // 预烘细节纹理（80m 周期无缝）：R 积水噪声 / G 颜色系数(颗粒+色差+拼缝+裂缝)/1.25 / B 粗糙度噪声 / A 倒影条纹
   gD = texture2D(uDetail, w / 80.0);
   float edge = uMode < 0.5 ? abs(vUv0.x - 0.5) * 2.0 : clamp(abs(length(w) - uRing.x) / uRing.y, 0.0, 1.0);
-  float lamp = 0.0;
-  for (int i = 0; i < 6; i++) { vec2 d = w - uLamps[i]; lamp = max(lamp, exp(-dot(d, d) / 90.0)); }
-  float thr = 0.71 - 0.14 * smoothstep(0.45, 1.0, edge) - 0.04 * lamp;
-  gPud = smoothstep(thr - 0.01, thr + 0.02, gD.r);
+  gLamp = fakeLamp(vWp);
+  // 水洼只放路边 / 灯下（招牌多在路边），暗处路中阈值高到基本没有
+  gLit = clamp(dot(gLamp, vec3(0.3, 0.5, 0.2)) * 10.0, 0.0, 1.0);
+  float place = max(smoothstep(0.3, 0.8, edge), gLit);
+  float thr = mix(${PD.thrDark.toFixed(3)}, ${PD.thrLit.toFixed(3)}, place);
+  gPud = smoothstep(thr - 0.012, thr + 0.02, gD.r);   // 水面（柔边）
+  gPudR = smoothstep(thr - 0.05, thr + 0.008, gD.r);   // ≈0.5m 粗糙度过渡带
   diffuseColor.rgb *= gD.g * 1.25;
-  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.35, gPud);
-  gLamp = fakeLamp(vWp); gPudL = gPud;
+  diffuseColor.rgb *= mix(1.0, ${PD.darken.toFixed(3)}, gPud);
+  gPudL = gPud;
 }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-roughnessFactor = mix(0.6 + 0.2 * gD.b, 0.1, gPud);`)
+roughnessFactor = mix(0.6 + 0.2 * gD.b, mix(${PD.roughEdge.toFixed(3)}, ${PD.rough.toFixed(3)}, gPud), gPudR);`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
 metalnessFactor = mix(0.25, 0.35, gPud);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-totalEmissiveRadiance += gPud * (vec3(0.006, 0.02, 0.035) * (0.4 + gD.a) + vec3(0.03, 0.005, 0.025) * smoothstep(0.7, 0.95, gD.a));
+if (gPud > 0.001) {
+  // 假倒影：按视线反射采样预烘霓虹环境图 + 沿视线纵向拉伸的街区色光条（不过 Bloom 阈值）
+  vec3 V = normalize(cameraPosition - vWp);
+  vec3 R = vec3(-V.x, V.y, -V.z);
+  vec2 euv = vec2(atan(R.z, R.x) * RECIPROCAL_PI2 + 0.5, asin(clamp(R.y, -1.0, 1.0)) * RECIPROCAL_PI + 0.5);
+  vec3 env = texture2D(uEnv, euv, 2.5).rgb; // mip 偏移=模糊倒影
+  vec2 f = normalize(V.xz + 1e-4); vec2 w2 = vec2(dot(vWp.xz, vec2(-f.y, f.x)), dot(vWp.xz, f) / ${PD.streakStretch.toFixed(2)});
+  float st = smoothstep(0.55, 0.78, texture2D(uDetail, w2 * 3.0 / 80.0).b); // 各向同性噪声沿视线拉伸 streakStretch 倍
+  vec3 dc = gLamp / max(max(gLamp.r, max(gLamp.g, gLamp.b)), 1e-3); dc = mix(vec3(0.31, 0.76, 0.97), dc, clamp(gLit * 2.0, 0.0, 1.0));
+  vec3 refl = env * ${PD.envK.toFixed(3)} + dc * st * ${PD.streakK.toFixed(3)};
+  totalEmissiveRadiance += gPud * min(refl, vec3(0.5));
+}
+${SPOT_EMIT}
 ${LAMP_EMIT}`)
   }
   m.customProgramCacheKey = () => 'asphalt'
@@ -116,13 +145,15 @@ export function makePlazaStone(R: number) {
   if (AB.has('ground')) return m
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uR = { value: R }
+    sh.uniforms.uCar = carSpotUniform
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWp;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWp = (modelMatrix * vec4(transformed, 1.0)).xyz;')
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 varying vec3 vWp; uniform float uR; float gGroove; vec3 gLamp; const float gPudL = 0.0; ${NOISE}
-${FAKE_LAMP_GLSL}`)
+${FAKE_LAMP_GLSL}
+${CAR_SPOT_GLSL}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 {
   vec2 w = vWp.xz; float r = length(w); float th = atan(w.x, w.y); // 0 = +Z（出生点方向）
@@ -153,7 +184,8 @@ ${FAKE_LAMP_GLSL}`)
 roughnessFactor = 0.45 + 0.2 * vn(vWp.xz * 1.3);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
 totalEmissiveRadiance += gGroove * vec3(0.31, 0.76, 0.97) * 0.38; // 比导向箭头低一档
-${LAMP_EMIT}`)
+${LAMP_EMIT}
+${SPOT_EMIT}`)
   }
   m.customProgramCacheKey = () => 'plazaStone'
   return m
