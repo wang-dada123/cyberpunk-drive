@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef } from 'react'
-import { CuboidCollider, CylinderCollider, RigidBody } from '@react-three/rapier'
+import { ConvexHullCollider, CuboidCollider, CylinderCollider, RigidBody } from '@react-three/rapier'
 import { Text } from '@react-three/drei'
 import * as THREE from 'three'
 import { makeAsphalt, makePlazaStone, SpawnArrows } from './GroundFX'
@@ -9,6 +9,9 @@ const SPAWN_ARROW_PATHS = SPAWN_PATHS.map((p) => ({ pts: p.pts, color: NAV[p.id]
 import { colors, districts, type DistrictId } from '../theme/colors'
 import { PLAZA_R, WORLD_HALF, rings, segs, roadClearance, districtAt, distSeg, ringDim, TUNNEL, TUNNEL_R1, type Seg } from '../data/mapLayout'
 import { Structures } from './Structures'
+import { Buildings, type Prism } from './Buildings'
+import { outerLayout } from '../data/outerLayout'
+import { Signs, type SignSpec } from './Signs'
 import { PortfolioStreet, STREET_ORIGIN_Z, SHOWCASE_RING_R, showcaseRingsWorld } from './PortfolioStreet'
 
 /** 一个盒子实例：位置 / 尺寸 / 绕 Y 旋转 / 颜色 */
@@ -116,32 +119,74 @@ export function chamferBoxes(r: Rect, cut: [number, number]): Rect[] {
   return [A, B]
 }
 
+const WIN: Record<string, [string, number]> = { alley: ['#4FC3F7', 0.55], portfolio: ['#00B0FF', 0.7], hidden: ['#64FFDA', 0.6], aiStall: ['#4FC3F7', 0.5] }
+const winCol = (x: number, z: number) => { const [c, k] = WIN[districtAt(x, z)] ?? WIN.alley; return new THREE.Color(c).multiplyScalar(k) }
+const pickMat = (u: number) => (u < 0.35 ? 0 : u < 0.75 ? 1 : 2) // 金属 35% / 混凝土 40% / 玻璃 25%
+/** 内圈网格楼只保留八边形投影 ≤150 的（外圈弦 158 → 与外圈街坊 ≥8m） */
+const OCT_N = Array.from({ length: 8 }, (_, k) => [Math.cos((k * Math.PI) / 4 + Math.PI / 8), Math.sin((k * Math.PI) / 4 + Math.PI / 8)])
+const octProj = (x: number, z: number) => Math.max(...OCT_N.map(([a, b]) => a * x + b * z))
 function buildCity() {
   const r = rng(7)
   const bodies: Box[] = []
   const roofs: Box[] = []
   const strips: Box[] = []
-  const hs = new Map<number, number>()
+  const prisms: Prism[] = []
+  const signs: SignSpec[] = []
+  const signN = new Map<string, number>()
+  const WORDS = ['NEON', 'RAMEN', 'HOTEL', 'DATA', 'BAR', 'CYBER', 'NOODLE', 'ARCADE', 'SYNC', 'MOTEL']
+  const plots: { poly: [number, number][]; h: number }[] = []
+  const hs = new Map<number, number>(), ms = new Map<number, number>()
   for (const { r: p, g, main } of layoutBlocks()) {
+    if (Math.max(octProj(p[0], p[2]), octProj(p[0], p[3]), octProj(p[1], p[2]), octProj(p[1], p[3])) > 150) continue
     const x = (p[0] + p[1]) / 2, z = (p[2] + p[3]) / 2
-    if (!hs.has(g)) hs.set(g, 8 + r() * 14 + Math.min(Math.hypot(x, z) / 8, 14) * r())
-    pushB(x, z, p[1] - p[0], p[3] - p[2], hs.get(g)!, main)
+    if (!hs.has(g)) { hs.set(g, 8 + r() * 14 + Math.min(Math.hypot(x, z) / 8, 14) * r()); ms.set(g, pickMat(r())) }
+    pushB(x, z, p[1] - p[0], p[3] - p[2], hs.get(g)!, main, ms.get(g)!, g)
   }
-  function pushB(x: number, z: number, w: number, d: number, h: number, main: boolean) {
+  // 外圈街坊（2–3 种标准地块，8m 通道）
+  outerLayout().forEach((poly, i) => {
+    let cx = 0, cz = 0; for (const [x, z] of poly) { cx += x / poly.length; cz += z / poly.length }
+    const h = 14 + r() * 16 + r() * 10
+    const did = districtAt(cx, cz), acc = districts[did].accent
+    prisms.push({ poly, h, mat: pickMat(r()), win: winCol(cx, cz), seed: 500 + i })
+    plots.push({ poly, h })
+    // 楼檐灯条（4cm 方条）：沿最长边顶部 + 一条转角竖条
+    let bi = 0, bl = 0
+    for (let k = 0; k < poly.length; k++) { const a = poly[k], b = poly[(k + 1) % poly.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L > bl) { bl = L; bi = k } }
+    const a = poly[bi], b = poly[(bi + 1) % poly.length]
+    let nx = b[1] - a[1], nz = -(b[0] - a[0]); const nl = Math.hypot(nx, nz); nx /= nl; nz /= nl
+    if (nx * ((a[0] + b[0]) / 2 - cx) + nz * ((a[1] + b[1]) / 2 - cz) < 0) { nx = -nx; nz = -nz }
+    const sc = r() < 0.6 ? '#4FC3F7' : '#E8F4FF', c = new THREE.Color(sc).multiplyScalar(1.1)
+    const ry = Math.atan2(b[0] - a[0], b[1] - a[1])
+    strips.push({ p: [(a[0] + b[0]) / 2 + nx * 0.03, h - 0.4, (a[1] + b[1]) / 2 + nz * 0.03], s: [0.04, 0.04, bl * 0.96], ry, c })
+    strips.push({ p: [a[0] + nx * 0.03, h * 0.5, a[1] + nz * 0.03], s: [0.04, h * 0.9, 0.04], ry, c })
+    void acc
+  })
+  function pushB(x: number, z: number, w: number, d: number, h: number, main: boolean, mat: number, g: number) {
     const did = districtAt(x, z)
     const acc = districts[did].accent
     bodies.push({ p: [x, h / 2, z], s: [w, h, d] })
+    prisms.push({ poly: [[x - w / 2, z - d / 2], [x + w / 2, z - d / 2], [x + w / 2, z + d / 2], [x - w / 2, z + d / 2]], h, mat, win: winCol(x, z), seed: g })
     roofs.push({ p: [x, h + 0.08, z], s: [w * 0.96, 0.16, d * 0.96], c: dim(acc, 0.22) })
     if (main && r() < 0.4) {
-      // 朝广场方向的立面竖向灯带
+      // 朝广场方向的立面竖向灯带（4cm 方条）
       const alongX = Math.abs(x) < Math.abs(z)
       const sx = alongX ? 0 : -Math.sign(x) * (w / 2 + 0.03)
       const sz = alongX ? -Math.sign(z) * (d / 2 + 0.03) : 0
       const off = (r() - 0.5) * (alongX ? w : d) * 0.6
-      strips.push({ p: [x + sx + (alongX ? off : 0), h * 0.55, z + sz + (alongX ? 0 : off)], s: alongX ? [0.18, h * 0.8, 0.06] : [0.06, h * 0.8, 0.18], c: dim(acc, 0.6) })
+      strips.push({ p: [x + sx + (alongX ? off : 0), h * 0.55, z + sz + (alongX ? 0 : off)], s: [0.04, h * 0.8, 0.04], c: dim(acc, 0.9) })
+      const n = signN.get(did) ?? 0
+      if (n < 6 && h > 9) {
+        signN.set(did, n + 1)
+        const nx = alongX ? 0 : -Math.sign(x), nz = alongX ? -Math.sign(z) : 0
+        const word = WORDS[(signs.length * 3 + 1) % WORDS.length]
+        const o2 = (alongX ? w : d) * 0.3 * (off > 0 ? -1 : 1)
+        signs.push({ p: [x + sx + nx * 0.35 + (alongX ? o2 : 0), Math.min(h - 1, 3.2 + word.length * 0.31), z + sz + nz * 0.35 + (alongX ? 0 : o2)], ry: Math.atan2(nx, nz), text: word })
+      }
+      // 楼檐横条
+      strips.push({ p: [x + sx, h - 0.3, z + sz], s: alongX ? [w * 0.96, 0.04, 0.04] : [0.04, 0.04, d * 0.96], c: new THREE.Color('#4FC3F7').multiplyScalar(1.1) })
     }
   }
-  if (import.meta.env.DEV) Object.assign(window, { __bodies: bodies, __segs: segs })
+  if (import.meta.env.DEV) Object.assign(window, { __bodies: bodies, __segs: segs, __plots: plots })
   // 路面导向光带：沿有 guide 的街道中线
   for (const s of segs) {
     if (!s.guide) continue
@@ -150,7 +195,7 @@ function buildCity() {
     const ry = Math.atan2(bx - ax, bz - az)
     strips.push({ p: [(ax + bx) / 2, 0.06, (az + bz) / 2], s: [0.16, 0.04, len], ry, c: dim(districts[s.guide].accent, 0.35) })
   }
-  return { bodies, roofs, strips }
+  return { bodies, roofs, strips, prisms, plots, signs }
 }
 
 // ---------- 路面标线（全部实例化） ----------
@@ -382,7 +427,7 @@ function Ground({ G }: { G: number }) {
 }
 
 export function City() {
-  const { bodies, roofs, strips } = useMemo(buildCity, [])
+  const { bodies, roofs, strips, prisms, plots, signs } = useMemo(buildCity, [])
   const { stalls, canopies, lanterns } = useMemo(makeStalls, [])
   const { edges, dashes, edgesDim } = useMemo(buildMarkings, [])
   const { props, glows } = useMemo(buildPlaza, []) // 旧放射分格线 tiles 已由石材 shader 取代
@@ -397,6 +442,7 @@ export function City() {
         <CuboidCollider args={[1, 4, G]} position={[G, 4, 0]} />
         {/* 建筑 / 摊位碰撞体（显式盒子） */}
         {bodies.map((b, i) => <CuboidCollider key={i} args={[b.s[0] / 2, b.s[1] / 2, b.s[2] / 2]} position={b.p} />)}
+        {plots.map((pl, i) => <ConvexHullCollider key={'o' + i} args={[new Float32Array(pl.poly.flatMap(([x, z]) => [x, 0, z, x, pl.h, z]))]} />)}
         {props.map((b, i) => <CuboidCollider key={'p' + i} args={[b.s[0] / 2, b.s[1] / 2, b.s[2] / 2]} position={b.p} rotation={[0, b.ry ?? 0, 0]} />)}
         {stalls.map((b, i) => <CuboidCollider key={'s' + i} args={[b.s[0] / 2, b.s[1] / 2, b.s[2] / 2]} position={b.p} />)}
       </RigidBody>
@@ -430,7 +476,8 @@ export function City() {
       <Boxes items={props} material={bodyMat} />
       <Boxes items={glows} material={glowMat} />
       {/* 建筑（实例化）+ 灯带 + 导向带 + 箭头 */}
-      <Boxes items={bodies} material={bodyMat} />
+      <Buildings list={prisms} />
+      <Signs list={signs} />
       <Boxes items={roofs} material={glowMat} />
       <Boxes items={strips} material={glowMat} />
       {/* 出生点前方流光小箭头（替换原白色大 V 箭头） */}

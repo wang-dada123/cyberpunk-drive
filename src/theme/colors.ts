@@ -5,7 +5,7 @@ export const colors = {
   deepBlue: '#00B0FF',
   coldWhite: '#E8F4FF',
   orange: '#FFB74D',
-  fog: '#0B1A2C',
+  fog: '#0A1626',
   road: '#0A1220',
   ground: '#070D18',
   building: '#0E1824',
@@ -19,11 +19,11 @@ export const bloom = {
   tail: '#00B0FF',
 } as const
 
-export const fogDensity = 0.022 // 俯视远机位下由 0.035 下调，避免发闷
+export const fogDensity = 0.028 // 俯视远机位下由 0.035 下调，避免发闷
 
 /** v1.1 分街区色调：冷蓝底不变，每区一个强调色（≤20% 画面） */
 export const districts = {
-  alley: { accent: '#4FC3F7', accent2: '#E8F4FF', fog: '#0B1A2C', ambient: '#1A2A40', hemiSky: '#12243A' },
+  alley: { accent: '#4FC3F7', accent2: '#E8F4FF', fog: '#0A1626', ambient: '#1A2A40', hemiSky: '#12243A' },
   portfolio: { accent: '#E8F4FF', accent2: '#00B0FF', fog: '#102338', ambient: '#22344E', hemiSky: '#1A3050' },
   aiStall: { accent: '#FFB74D', accent2: '#4FC3F7', fog: '#141C2A', ambient: '#2A2A34', hemiSky: '#1E2636' },
   hidden: { accent: '#64FFDA', accent2: '#E8F4FF', fog: '#08201E', ambient: '#12302C', hemiSky: '#0E2A28' },

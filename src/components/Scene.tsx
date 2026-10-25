@@ -8,6 +8,7 @@ import { Canvas, advance } from '@react-three/fiber'
 const MANUAL = import.meta.env.DEV && new URLSearchParams(location.search).has('manual')
 if (MANUAL) Object.assign(window, { __advance: advance })
 import { Physics } from '@react-three/rapier'
+import { FogPlanes } from './FogPlanes'
 import { EffectComposer, Bloom } from '@react-three/postprocessing'
 import { colors, bloom, fogDensity } from '../theme/colors'
 import { City } from './City'
@@ -84,6 +85,7 @@ export function Scene() {
           <Car />
         </Physics>
         <FollowCamera />
+        <FogPlanes />
         {!AB.has('rain') && <Rain half={tier === 'low'} />}
         {!AB.has('bloom') && <EffectComposer multisampling={0}>
           <Bloom
@@ -93,6 +95,7 @@ export function Scene() {
             luminanceThreshold={bloom.threshold}
             luminanceSmoothing={0.3}
             mipmapBlur
+            radius={0.6}
             resolutionScale={tier === 'low' ? 0.35 : 0.5}
           />
         </EffectComposer>}

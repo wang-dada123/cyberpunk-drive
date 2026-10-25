@@ -12,11 +12,14 @@ export const LOOK = {
     under: { color: '#4FC3F7', w: 1.6, l: 2.6, a: 0.35 },
   },
   puddle: {
-    thrDark: 0.80, // 暗处/路中阈值（噪声高于阈值才是水；越高越少）
-    thrLit: 0.62, // 路边 + 灯下阈值
-    darken: 0.9, // 底色只比路面暗 10%
-    rough: 0.05, roughEdge: 0.6,
-    envK: 0.6, streakK: 0.4, streakStretch: 3.5,
+    thrDark: 0.69, // 暗处/路中阈值（噪声高于阈值才是水；越高越少）→ 约 10%
+    thrLit: 0.65, // 路边 + 灯下阈值 → 约 15%；综合覆盖率 ≈12%
+    darken: 0.5, // 水面底色压暗，形成“暗镜面”轮廓
+    rough: 0.02, roughEdge: 0.3,
+    k: 0.55, // 水洼区伪反射总强度（0.5–0.6）
+    envK: 0.9, streakK: 0.75, streakStretch: 3.5,
+    ice: '#4FC3F7', iceK: 0.09, // 冰蓝低强度伪反射底色（路灯/招牌）
+    cap: 0.3, // 单通道上限，防白斑
   },
 }
 

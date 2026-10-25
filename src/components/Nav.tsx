@@ -98,6 +98,7 @@ function buildGeo(a: ReturnType<typeof buildAtlas>) {
 const signTex = new THREE.CanvasTexture(document.createElement('canvas')); signTex.colorSpace = THREE.SRGBColorSpace; signTex.anisotropy = 4
 const signMat = new THREE.MeshBasicMaterial({ map: signTex, transparent: true, side: THREE.DoubleSide, toneMapped: false, depthWrite: false, alphaTest: 0.02 })
 signMat.color.setScalar(K)
+signMat.forceSinglePass = true // 透明双面默认会拆两遍并每帧 needsUpdate→getProgram 分配；单面片不需要
 const emptyGeo = new THREE.BufferGeometry(); emptyGeo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, 0, 0, 0, 0], 3)); emptyGeo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, 0], 2))
 export function Signposts() {
   const [atlas, setAtlas] = useState<ReturnType<typeof buildAtlas> | null>(null)
