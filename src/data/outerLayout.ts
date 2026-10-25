@@ -116,13 +116,100 @@ export function outerLayout(): Poly[] {
     plots.push(...gridPlots(Q, u, [[R2, R2 + 24], [R2 + 32, R2 + 56], [R2 + 64, 400]], 24, 0))
   }
   for (const s of segs) plots = plots.flatMap((P) => subtractRect(P, segRect(s.a, s.b, s.w / 2 + SETBACK_O)))
-  plots = plots.flatMap((P) => subtractRect(P, segRect([25, 0], [240, 0], 11.5))) // AI 摊位带
+  plots = plots.flatMap((P) => subtractRect(P, segRect([25, 0], [66, 0], 8.7))).flatMap((P) => subtractRect(P, segRect([76, 0], [240, 0], 10))) // AI 摊位带
   const ok = (P: Poly) => {
     if (minWidth(P) < 10 || area(P) < 220) return false
     for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length]; for (let t = 0; t <= 1; t += 0.1) if (roadClearance(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t) < SETBACK_O - 0.1) return false }
     return true
   }
   plots = plots.filter(ok)
+  for (let changed = true; changed;) {
+    changed = false
+    for (let i = 0; i < plots.length && !changed; i++) for (let j = i + 1; j < plots.length; j++) {
+      const g = polyGap(plots[i], plots[j])
+      if ((g > 0.05 && g < PASSAGE - 0.01) || polyOverlap(plots[i], plots[j])) { plots.splice(area(plots[i]) < area(plots[j]) ? i : j, 1); changed = true; break }
+    }
+  }
+  return plots
+}
+
+/** 路口 3m 倒角：顶点两侧邻边都贴着道路退线（净距≈1.5m）→ 用过两边各 3m 处的直线切掉该角 */
+export function chamferPoly(P: Poly, ch = 3): Poly {
+  let Q = P
+  for (let i = 0; i < P.length; i++) {
+    const v = P[i], a = P[(i + P.length - 1) % P.length], b = P[(i + 1) % P.length]
+    const la = Math.hypot(a[0] - v[0], a[1] - v[1]), lb = Math.hypot(b[0] - v[0], b[1] - v[1])
+    if (la < ch * 2.5 || lb < ch * 2.5) continue
+    const da: V2 = [(a[0] - v[0]) / la, (a[1] - v[1]) / la], db: V2 = [(b[0] - v[0]) / lb, (b[1] - v[1]) / lb]
+    if (Math.abs(dot(da, db)) > 0.3) continue // 只切近直角
+    const near = (d: V2) => roadClearance(v[0] + d[0] * 2, v[1] + d[1] * 2) < SETBACK_O + 0.4
+    if (!near(da) || !near(db)) continue
+    const p1: V2 = [v[0] + da[0] * ch, v[1] + da[1] * ch], p2: V2 = [v[0] + db[0] * ch, v[1] + db[1] * ch]
+    let n: V2 = [-(p2[1] - p1[1]), p2[0] - p1[0]]; const L = Math.hypot(n[0], n[1]); n = [n[0] / L, n[1] / L]
+    if (dot(n, v) < dot(n, p1)) n = [-n[0], -n[1]]
+    Q = clip(Q, n, dot(n, p1))
+  }
+  return Q
+}
+
+/** 内圈（r≤150）街坊 v4：与外圈同一套 45° 扇区 + gridPlots 网格；
+ *  行（沿扇区平分线）避开 r75 环：内排 u∈[29.5,61]、外排 u∈[83.5,115]/[123,150]；列宽 40m、通道 8m；
+ *  再按路网（含窄巷折线、结构避让）做差集 → 两侧自然成整面长楼；碎块（最窄<14 或 <400m²）丢弃。 */
+export const INNER_ROWS: [number, number][] = [[29.5, 61], [83.5, INNER_APOTHEM]]
+/** 超过 maxL 的街坊沿最长边方向等分，块间 8m 通道 */
+export const MIN_SIDE = 30
+/** 平均宽度 = 面积 / 最长方向跨度 */
+export function avgWidth(P: Poly) { let bi = 0, bl = 0; for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L > bl) { bl = L; bi = i } }
+  const a = P[bi], b = P[(bi + 1) % P.length], d: V2 = [(b[0] - a[0]) / bl, (b[1] - a[1]) / bl]; let lo = Infinity, hi = -Infinity; for (const p of P) { const t = dot(d, p); lo = Math.min(lo, t); hi = Math.max(hi, t) }
+  return area(P) / (hi - lo) }
+/** 广场旁楔形块：有顶点落在内排(u<61)范围内 → 允许最窄 <30，但平均宽 ≥30 */
+const nearPlaza = (P: Poly) => P.some((p) => Math.hypot(p[0], p[1]) < 66)
+/** 楔形平均宽 = 面积 / 径向进深（沿质心方向的跨度） */
+export function wedgeAvgWidth(P: Poly) { let cx = 0, cz = 0; for (const p of P) { cx += p[0] / P.length; cz += p[1] / P.length } const L = Math.hypot(cx, cz), d: V2 = [cx / L, cz / L]
+  let lo = Infinity, hi = -Infinity; for (const p of P) { const t = dot(d, p); lo = Math.min(lo, t); hi = Math.max(hi, t) } return area(P) / (hi - lo) }
+export const blockOk = (P: Poly) => minWidth(P) >= MIN_SIDE - 0.01 || (nearPlaza(P) && wedgeAvgWidth(P) >= MIN_SIDE)
+const span = (P: Poly) => { let m = 0; for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 1e-6) continue; const d: V2 = [(b[0] - a[0]) / L, (b[1] - a[1]) / L]; let lo = Infinity, hi = -Infinity; for (const p of P) { const t = dot(d, p); lo = Math.min(lo, t); hi = Math.max(hi, t) } m = Math.max(m, hi - lo) } return m }
+/** b4 补：沿任一边方向等分 n 段（块间 8m），挑"每块最短边 ≥30（广场楔形看平均宽）"且最大跨度最小的切法 */
+function splitLong(P: Poly, maxL = 50): Poly[] {
+  let best: Poly[] | null = null, bestS = Infinity
+  const consider = (out: Poly[]) => {
+    if (!out.length || !out.every((Q) => Q.length >= 3 && blockOk(Q))) return
+    const sp = Math.max(...out.map(span)) + (out.length - 1) * 0.5 // 同等跨度时少切
+    if (sp < bestS) { bestS = sp; best = out }
+  }
+  consider([P])
+  for (let i = 0; i < P.length; i++) {
+    const a = P[i], b = P[(i + 1) % P.length], L0 = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L0 < 1e-6) continue
+    const d: V2 = [(b[0] - a[0]) / L0, (b[1] - a[1]) / L0]
+    let lo = Infinity, hi = -Infinity; for (const p of P) { const t = dot(d, p); lo = Math.min(lo, t); hi = Math.max(hi, t) }
+    const L = hi - lo
+    for (let n = 2; n <= 4; n++) {
+      const w = (L - (n - 1) * PASSAGE) / n; if (w < MIN_SIDE) break
+      const out: Poly[] = []
+      for (let k = 0; k < n; k++) { const s0 = lo + k * (w + PASSAGE); let Q = clip(P, [-d[0], -d[1]], -s0); Q = clip(Q, d, s0 + w); out.push(Q) }
+      consider(out)
+    }
+  }
+  if (!best) return [P]
+  return bestS > maxL && (best as Poly[]).length === 1 ? [P] : best
+}
+export function innerLayout(maxL = 50, strict = true): Poly[] {
+  let plots: Poly[] = []
+  const RR = INNER_APOTHEM / Math.cos(Math.PI / 8) + 20
+  for (let k = 0; k < 8; k++) {
+    const a0 = (k * Math.PI) / 4, a1 = a0 + Math.PI / 4, am = (a0 + a1) / 2, u: V2 = [Math.cos(am), Math.sin(am)]
+    const P: Poly = [[0, 0], [Math.cos(a0) * RR, Math.sin(a0) * RR], [Math.cos(a1) * RR, Math.sin(a1) * RR]]
+    for (const [r0, r1] of INNER_ROWS) { let R = clip(P, [-u[0], -u[1]], -r0); R = clip(R, u, r1); if (R.length >= 3) plots.push(R) }
+  }
+  for (const s of segs) plots = plots.flatMap((P) => subtractRect(P, segRect(s.a, s.b, s.w / 2 + SETBACK_O)))
+  plots = plots.flatMap((P) => subtractRect(P, segRect([25, 0], [66, 0], 8.7))).flatMap((P) => subtractRect(P, segRect([76, 0], [240, 0], 10)))
+  const ok = (P: Poly) => {
+    if (minWidth(P) < 14 || area(P) < 400) return false
+    for (const p of P) if (Math.hypot(p[0], p[1]) < 1) return false
+    for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length]; for (let t = 0; t <= 1; t += 0.05) if (roadClearance(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t) < SETBACK_O - 0.1) return false }
+    return true
+  }
+  plots = plots.flatMap((P) => splitLong(P, maxL)).filter(ok).map((P) => chamferPoly(P)).filter((P) => !strict || blockOk(P))
   for (let changed = true; changed;) {
     changed = false
     for (let i = 0; i < plots.length && !changed; i++) for (let j = i + 1; j < plots.length; j++) {

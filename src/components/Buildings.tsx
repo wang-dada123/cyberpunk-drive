@@ -72,31 +72,32 @@ float gRough; float gMetal; float gEnvK; vec3 gWinE;`)
   vec2 f = vF; vec2 fw = max(fwidth(f), vec2(1e-4));
   vec3 base; gWinE = vec3(0.0);
   if (mt < 0.5) { // 拉丝金属板：面板 3×1.2m，缝 2cm，纵向拉丝
-    base = vec3(0.0080, 0.0130, 0.0232); gRough = 0.38; gMetal = 0.85; gEnvK = 0.9;
+    base = vec3(0.0140, 0.0200, 0.0320); gRough = 0.34; gMetal = 0.85; gEnvK = 1.2; // b4 金属 env 1.2，明度居中
     vec2 pc = abs(fract(f / vec2(1.2, 3.0) + 0.5) - 0.5) * vec2(1.2, 3.0);
     float seam = smoothstep(0.01 - fw.x, 0.01 + fw.x, pc.x) * smoothstep(0.01 - fw.y, 0.01 + fw.y, pc.y);
     base *= mix(0.45, 1.0, seam) * (0.9 + 0.1 * bh(vec2(floor(f.x * 40.0), 1.0)));
     gRough += 0.06 * (bh(vec2(floor(f.x * 90.0), 3.0)) - 0.5);
   } else if (mt < 1.5) { // 深色混凝土：细噪点粗糙度 + 底部 1.5m 湿痕
-    base = vec3(0.0044, 0.0091, 0.0176); gRough = 0.82; gMetal = 0.05; gEnvK = 0.6;
+    base = vec3(0.0022, 0.0040, 0.0072); gRough = 0.9; gMetal = 0.0; gEnvK = 0.25; // b4 混凝土压暗、rough 0.9
     float nz = bh(floor(f * 6.0)); base *= 0.85 + 0.3 * nz; gRough += 0.1 * (nz - 0.5);
     float wet = 1.0 - smoothstep(1.2, 1.6, f.y) * (1.0 - vRoof) - vRoof; wet = max(wet, 0.0);
-    gRough = mix(gRough, 0.35, wet); base *= mix(1.0, 0.7, wet);
+    gRough = mix(gRough, 0.5, wet); base *= mix(1.0, 0.8, wet);
   } else { // 玻璃幕墙：envMap 1.4，竖梃 #1C2836 每 1.5m
-    base = vec3(0.0030, 0.0070, 0.0137); gRough = 0.08; gMetal = 0.9; gEnvK = 1.4;
+    base = vec3(0.0030, 0.0070, 0.0137); gRough = 0.04; gMetal = 1.0; gEnvK = 2.4; // b4 玻璃：天空+灯条倒影（envMap）
     float mu = abs(fract(f.x / 1.5 + 0.5) - 0.5) * 1.5;
     float tr = abs(fract(f.y / 3.5 + 0.5) - 0.5) * 3.5;
-    float mull = 1.0 - smoothstep(0.035 - fw.x, 0.035 + fw.x, mu) * smoothstep(0.03 - fw.y, 0.03 + fw.y, tr);
+    float mull = 1.0 - smoothstep(0.035 - fw.x, 0.035 + fw.x, mu); tr; // b4 去横档
     base = mix(base, vec3(0.0116, 0.0222, 0.0368), mull); gRough = mix(gRough, 0.5, mull); gEnvK = mix(gEnvK, 0.5, mull);
   }
   if (vRoof < 0.5 && f.y > 3.5) { // 亮窗：1.5m 开间 × 3.5m 层高，窗 1.0×1.8m，按栋+格哈希 ≈30% 点亮
-    float wspan = mt > 1.5 ? 1.5 : 2.2;
+    float wspan = 2.2; // b4 整扇竖窗 1.3×2.08m (1:1.6)
     vec2 cell = floor(vec2(f.x / wspan, f.y / 3.5)); vec2 lc = vec2(fract(f.x / wspan) * wspan, fract(f.y / 3.5) * 3.5);
-    float win = smoothstep(0.0, fw.x * 1.5, min(lc.x - (wspan - 1.0) * 0.5, wspan - (wspan - 1.0) * 0.5 - lc.x)) * smoothstep(0.0, fw.y * 1.5, min(lc.y - 0.9, 2.7 - lc.y));
-    float h = bh(cell + vSeed * 17.0);
+    float win = smoothstep(0.0, fw.x * 1.5, min(lc.x - (wspan - 1.3) * 0.5, wspan - (wspan - 1.3) * 0.5 - lc.x)) * smoothstep(0.0, fw.y * 1.5, min(lc.y - 0.71, 2.79 - lc.y));
+    float gsz = 3.0 + floor(bh(vec2(cell.y, vSeed * 5.0)) * 2.999); float grp = floor((cell.x + floor(bh(vec2(vSeed, cell.y)) * 5.0)) / gsz); // 3–5 扇成组
+    float h = bh(vec2(grp, cell.y) + vSeed * 17.0);
     float lit = step(h, 0.30) * clamp(1.0 - fw.x * 0.6, 0.0, 1.0);
-    float grad = mix(1.0, 0.7, clamp((lc.y - 0.9) / 1.8, 0.0, 1.0)); // 上 70% / 下 100%
-    gWinE = vWin * win * lit * grad * (0.75 + 0.5 * bh(cell.yx + vSeed)) * uWinK;
+    float grad = mix(1.0, 0.85, clamp((lc.y - 0.71) / 2.08, 0.0, 1.0)); // 上 70% / 下 100%
+    gWinE = vWin * win * lit * grad * (0.85 + 0.3 * bh(vec2(grp, cell.y) + vSeed)) * uWinK;
     base = mix(base, vec3(0.002, 0.004, 0.008), win * (1.0 - lit) * 0.6);
   }
   if (vRoof > 0.5) { base = vec3(0.006, 0.010, 0.016); gRough = 0.7; gMetal = 0.2; gEnvK = 0.3; gWinE = vWin * 0.1; } // 屋顶淡分区色（俯视可辨地块）

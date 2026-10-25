@@ -17,7 +17,7 @@ export const LOOK = {
     darken: 0.5, // 水面底色压暗，形成“暗镜面”轮廓
     rough: 0.02, roughEdge: 0.3,
     k: 0.55, // 水洼区伪反射总强度（0.5–0.6）
-    envK: 0.9, streakK: 0.75, streakStretch: 3.5,
+    envK: 0.9, streakK: 0.75, streakStretch: 1.75, // b4 拖影减半（GroundFX 纵向频率 ×2）
     ice: '#4FC3F7', iceK: 0.09, // 冰蓝低强度伪反射底色（路灯/招牌）
     cap: 0.3, // 单通道上限，防白斑
   },

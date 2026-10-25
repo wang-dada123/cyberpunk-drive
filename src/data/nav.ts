@@ -15,9 +15,11 @@ export type NavId = keyof typeof NAV
 const Q = Math.SQRT1_2
 const TUN_IN: [number, number] = [-TUNNEL.R0 * Q, TUNNEL.R0 * Q]
 
+/** b4 补：作品街尽端实体塔楼（环路外侧、轴线上；CARROLL 广告牌左移让开） */
+export const END_TOWER = { x0: -6, x1: 6, z0: -234, z1: -228, h: 86 }
 /** 地标：目的地上空的发光光柱（emissive≈2.0，进 Bloom），超出远裁剪面时用压深度的远景版 */
-export const LANDMARKS: Array<{ id: NavId; p: [number, number]; h: number; what: string }> = [
-  { id: 'portfolio', p: [0, -205], h: 70, what: '作品街北端全息光柱 + 作品展墙' },
+export const LANDMARKS: Array<{ id: NavId; p: [number, number]; h: number; what: string; bp?: [number, number]; base?: number }> = [
+  { id: 'portfolio', p: [0, -205], h: 128, bp: [0, -231], base: END_TOWER.h, what: '作品街尽端实体塔楼 + 塔顶细光柱' },
   { id: 'aiStall', p: [208, 0], h: 60, what: '东门牌坊上空琥珀光柱' },
   { id: 'hidden', p: [-208, 0], h: 60, what: '西门薄荷光柱' },
   { id: 'alley', p: [0, 208], h: 60, what: '窄巷尽头门上空冰蓝光柱' },

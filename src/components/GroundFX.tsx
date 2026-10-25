@@ -121,8 +121,8 @@ ${CAR_SPOT_GLSL}`)
   gLit = clamp(dot(gLamp, vec3(0.3, 0.5, 0.2)) * 10.0, 0.0, 1.0);
   float place = max(smoothstep(0.3, 0.8, edge), gLit);
   float thr = mix(${PD.thrDark.toFixed(3)}, ${PD.thrLit.toFixed(3)}, place);
-  gPud = smoothstep(thr - 0.02, thr + 0.035, gD.r);   // 水面（≈0.6m 柔边）
-  gPudR = smoothstep(thr - 0.035, thr + 0.01, gD.r);   // 粗糙度过渡带
+  gPud = smoothstep(thr - 0.03, thr + 0.0525, gD.r);   // 水面（b4 柔边 +0.3m ≈0.9m）
+  gPudR = smoothstep(thr - 0.05, thr + 0.015, gD.r);   // 粗糙度过渡带
   diffuseColor.rgb *= gD.g * 1.25;
   diffuseColor.rgb *= mix(1.0, ${PD.darken.toFixed(3)}, gPud);
   gPudL = gPud;
@@ -138,13 +138,13 @@ if (gPud > 0.001) {
   vec3 R = vec3(-V.x, V.y, -V.z);
   vec2 euv = vec2(atan(R.z, R.x) * RECIPROCAL_PI2 + 0.5, asin(clamp(R.y, -1.0, 1.0)) * RECIPROCAL_PI + 0.5);
   vec3 env = texture2D(uEnv, euv, 3.5).rgb; // mip 偏移=模糊倒影
-  vec3 dc = gLamp / max(max(gLamp.r, max(gLamp.g, gLamp.b)), 1e-3); dc = mix(vec3(0.31, 0.76, 0.97), dc, clamp(gLit * 2.0, 0.0, 1.0));
+  vec3 dc = mix(vec3(0.31, 0.76, 0.97), vec3(0.91, 0.957, 1.0), 0.5 * clamp(gLit * 2.0, 0.0, 1.0)); // b4 倒影只用 #4FC3F7/#E8F4FF，不吃分区色
   float fr = 0.3 + 0.4 * pow(1.0 - clamp(V.y, 0.0, 1.0), 3.0); // 菲涅尔：掠射更亮
   // 纵向倒影：沿视线方向拉长的软光带（只随横向坐标变化，宽≈0.5–1m，无细线）
   vec2 rt = normalize(vec2(viewMatrix[0][0], viewMatrix[2][0]) + 1e-4); vec2 vh = vec2(-rt.y, rt.x);
   float sx = dot(vWp.xz, rt) * 3.0; // 相机横向坐标：光带沿视线纵向延伸、向消失点汇聚
   float band = 0.5 + 0.5 * sin(sx * 2.4 + 1.8 * sin(sx * 0.7));
-  band = band * band * (0.55 + 0.45 * sin(dot(vWp.xz, vh) * 0.12 + sx * 0.4));
+  band = band * band * (0.55 + 0.45 * sin(dot(vWp.xz, vh) * 0.24 + sx * 0.4));
   vec3 refl = ((env * ${PD.envK.toFixed(3)} + dc * ${PD.streakK.toFixed(3)} * (0.2 + 2.4 * band)) * ${PD.k.toFixed(3)} + ${g3(PD.ice)} * ${PD.iceK.toFixed(3)}) * fr; // 柔和整片色光 + 冰蓝底，无拉伸条纹
   totalEmissiveRadiance += gPud * min(refl, vec3(${PD.cap.toFixed(3)}));
 }

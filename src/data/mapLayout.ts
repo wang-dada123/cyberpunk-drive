@@ -26,6 +26,8 @@ export const BRIDGE = {
   c: at(1, -1, 150), dir: [Math.SQRT1_2, Math.SQRT1_2] as [number, number],
   H: 6, W: 8, FLAT: 16, RAMP: 55, // 余弦坡：最大坡度 = H·π/(2·RAMP) ≈ 9.7°
 }
+/** b4 补：平行巷外移，让内圈街坊最短边 ≥30m */
+export const LX = 46, LZE = 48, LZW = 44, XW = -157, XE = 152, ZC = -117
 export const bridgeEnd = (k: -1 | 1): [number, number] => {
   const L = BRIDGE.FLAT / 2 + BRIDGE.RAMP
   return [BRIDGE.c[0] + BRIDGE.dir[0] * L * k, BRIDGE.c[1] + BRIDGE.dir[1] * L * k]
@@ -138,27 +140,27 @@ export const segs: Seg[] = [
   { a: [14, 176], b: [0, 188], w: 8, guide: 'alley' },
   { a: [0, 188], b: [0, 216], w: 8, guide: 'alley' },
   // 北：±40m 后巷 + z=-120/-170 横街
-  { a: [40, -64], b: [40, -214], w: 8, dim: true },
-  { a: [-40, -64], b: [-40, -214], w: 8, dim: true },
-  { a: [-40, -120], b: [40, -120], w: 8, dim: true },
-  { a: [-40, -170], b: [40, -170], w: 8, dim: true },
+  { a: [LX, -61.5], b: [LX, -214], w: 8, dim: true },
+  { a: [-LX, -61.5], b: [-LX, -214], w: 8, dim: true },
+  { a: [-LX, ZC], b: [LX, ZC], w: 8, dim: true },
+  { a: [-LX, -170], b: [LX, -170], w: 8, dim: true },
   // 东：z=±40 平行巷 + x=130/180 横街（夜市格网）
-  { a: [64, -40], b: [214, -40], w: 8, dim: true },
-  { a: [64, 40], b: [214, 40], w: 8, dim: true },
-  { a: [130, -40], b: [130, 40], w: 8, dim: true },
-  { a: [180, -40], b: [180, 40], w: 8, dim: true },
+  { a: [59.2, -LZE], b: [214, -LZE], w: 8, dim: true },
+  { a: [59.2, LZE], b: [214, LZE], w: 8, dim: true },
+  { a: [XE, -LZE], b: [XE, LZE], w: 8, dim: true },
+  { a: [180, -LZE], b: [180, LZE], w: 8, dim: true },
   // 西：z=±36 6m 巷 + x=-150 横街
-  { a: [-66, -36], b: [-215, -36], w: 8, dim: true },
-  { a: [-66, 36], b: [-215, 36], w: 8, dim: true },
-  { a: [-150, -36], b: [-150, 36], w: 8, dim: true },
+  { a: [-62.2, -LZW], b: [-215, -LZW], w: 8, dim: true },
+  { a: [-62.2, LZW], b: [-215, LZW], w: 8, dim: true },
+  { a: [XW, -LZW], b: [XW, LZW], w: 8, dim: true },
   // 四条斜向大道 10m（西南段在隧道处断开，由隧道结构接上）
   diag(1, -1), diag(-1, -1), diag(1, 1),
   diag(-1, 1, PLAZA_R, TUNNEL.R0), diag(-1, 1, TUNNEL_R1, 222),
   { ...diag(-1, 1, TUNNEL.R0, TUNNEL_R1), virtual: true },
   // A 天桥：虚拟避让带 + 两端接到后巷的引道
   { a: bridgeEnd(-1), b: bridgeEnd(1), w: 12, virtual: true },
-  { a: bridgeEnd(1), b: [bridgeEnd(1)[0], -40], w: 8, dim: true },
-  { a: bridgeEnd(-1), b: [40, bridgeEnd(-1)[1]], w: 8, dim: true },
+  { a: bridgeEnd(1), b: [bridgeEnd(1)[0], -LZE], w: 8, dim: true },
+  { a: bridgeEnd(-1), b: [LX, bridgeEnd(-1)[1]], w: 8, dim: true },
   // B 停车场：建筑避让 + 斜向大道→A 道入口的引道
   { a: garageW(-GARAGE.HU - 2, 0), b: garageW(GARAGE.HU + 2, 0), w: GARAGE.HV * 2 + 6, virtual: true },
   { a: garageW(-50, -12), b: garageW(-GARAGE.HU, -8), w: 14, virtual: true },

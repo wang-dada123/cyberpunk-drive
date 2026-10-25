@@ -123,13 +123,15 @@ export function LandmarkBeacons() {
     const c = new THREE.Color()
     for (const l of LANDMARKS) {
       c.set(NAV[l.id].color)
-      off.push(l.p[0], 0, l.p[1]); scl.push(1.1, l.h, 1.1); col.push(c.r, c.g, c.b, 1) // 光柱
-      off.push(l.p[0], l.h, l.p[1]); scl.push(5, 0.5, 5); col.push(c.r, c.g, c.b, 2) // 顶部光环
+      const [px, pz] = l.bp ?? l.p, y0 = l.base ?? 0
+      off.push(px, y0, pz); scl.push(l.base ? 0.7 : 1.4, l.h - y0, l.base ? 0.7 : 1.4); col.push(c.r, c.g, c.b, 1) // 光柱（实体塔顶上的为细柱）
+      off.push(px, l.h, pz); scl.push(l.base ? 2.4 : 4, 0.35, l.base ? 2.4 : 4); col.push(c.r, c.g, c.b, 2) // 顶部光环
+      if (!l.base) for (let y = 10; y < l.h - 4; y += 12) { off.push(px, y, pz); scl.push(2.6, 0.3, 2.6); col.push(c.r, c.g, c.b, 2) } // b4 腰线 ×1.8
     }
     g.setAttribute('aOff', new THREE.InstancedBufferAttribute(new Float32Array(off), 3))
     g.setAttribute('aScl', new THREE.InstancedBufferAttribute(new Float32Array(scl), 3))
     g.setAttribute('aCol', new THREE.InstancedBufferAttribute(new Float32Array(col), 4))
-    g.instanceCount = LANDMARKS.length * 2
+    g.instanceCount = off.length / 3
     const m = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending,
       vertexShader: `attribute vec3 aOff, aScl; attribute vec4 aCol; varying vec4 vC; varying float vY;
@@ -137,7 +139,7 @@ export function LandmarkBeacons() {
           vec4 p = projectionMatrix * viewMatrix * vec4(position * aScl + aOff, 1.0);
           p.z = min(p.z, p.w * 0.99995); gl_Position = p; }`,
       fragmentShader: `varying vec4 vC; varying float vY;
-        void main(){ float a = vC.a > 1.5 ? 1.0 : mix(0.85, 0.18, vY); gl_FragColor = vec4(vC.rgb * 2.0 * a, a); }`,
+        void main(){ if (vC.a > 1.5) { gl_FragColor = vec4(vC.rgb * 1.8, 1.0); return; } float a = mix(0.36, 0.08, vY); gl_FragColor = vec4(vC.rgb * a, a); // b4 光柱透明度 <0.4 }`,
     })
     return { geo: g, mat: m }
   }, [])
