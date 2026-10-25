@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { colors } from '../theme/colors'
 import { isMobile } from '../utils/isMobile'
-import { BRIDGE, TUNNEL, TUNNEL_R1 } from '../data/mapLayout'
+import { BRIDGE, TUNNEL, TUNNEL_R1, GARAGE, SPIRAL } from '../data/mapLayout'
 
 const H = 20
 const SPEED = 18
@@ -34,11 +34,13 @@ export function Rain({ half = false }: { half?: boolean }) {
           uTunDir: { value: new THREE.Vector2(TUNNEL.dir[0], TUNNEL.dir[1]) }, uTunU: { value: new THREE.Vector3(TUNNEL.R0 + 30, TUNNEL_R1 - 30, TUNNEL.W / 2 + 0.5) /* 顶板范围 */ },
           uBrC: { value: new THREE.Vector2(BRIDGE.c[0], BRIDGE.c[1]) }, uBrDir: { value: new THREE.Vector2(BRIDGE.dir[0], BRIDGE.dir[1]) },
           uBr: { value: new THREE.Vector3(BRIDGE.FLAT / 2 + BRIDGE.RAMP * 0.6, BRIDGE.W / 2 + 0.3, BRIDGE.H) },
+          uGaC: { value: new THREE.Vector2(...GARAGE.c) }, uGaD: { value: new THREE.Vector2(...GARAGE.d) }, uGa: { value: new THREE.Vector3(GARAGE.HU + 0.3, GARAGE.HV + 0.3, 7.9) },
+          uSpC: { value: new THREE.Vector2(...SPIRAL.c) }, uSp: { value: new THREE.Vector4(SPIRAL.R, SPIRAL.W / 2 + 0.3, SPIRAL.th0, SPIRAL.L) },
           uTime: { value: 0 }, uColor: { value: new THREE.Color(colors.coldWhite) }, uOpacity: { value: 0.3 } },
       ]),
       vertexShader: /* glsl */ `
         uniform float uTime; attribute float aEnd;
-        uniform vec2 uTunDir, uBrC, uBrDir; uniform vec3 uTunU, uBr;
+        uniform vec2 uTunDir, uBrC, uBrDir; uniform vec3 uTunU, uBr; uniform vec2 uGaC, uGaD, uSpC; uniform vec3 uGa; uniform vec4 uSp;
         varying float vHide;
         #include <fog_pars_vertex>
         void main(){
@@ -50,7 +52,12 @@ export function Rain({ half = false }: { half?: boolean }) {
           float inTun = step(uTunU.x, tu) * step(tu, uTunU.y) * step(abs(tv), uTunU.z);
           vec2 bq = wp.xz - uBrC; vec2 bn = vec2(-uBrDir.y, uBrDir.x);
           float underBr = step(abs(dot(bq, uBrDir)), uBr.x) * step(abs(dot(bq, bn)), uBr.y) * step(wp.y, uBr.z);
-          vHide = max(max(inTun, underBr), step(wp.y, -0.6));
+          vec2 gq = wp.xz - uGaC; vec2 gn = vec2(uGaD.y, -uGaD.x);
+          float inGa = step(abs(dot(gq, uGaD)), uGa.x) * step(abs(dot(gq, gn)), uGa.y) * step(wp.y, uGa.z);
+          vec2 sq = wp.xz - uSpC; float sa = mod(uSp.z - atan(sq.y, sq.x), 6.2832) * uSp.x; // 顺时针弧长
+          float sh = max(clamp(0.1584 * (sa - 5.0), 0.0, 12.0), sa + 75.4 < uSp.w ? 0.1584 * (sa + 70.4) : 0.0);
+          float inSp = step(abs(length(sq) - uSp.x), uSp.y) * step(wp.y, sh);
+          vHide = max(max(max(inTun, underBr), max(inGa, inSp)), step(wp.y, -0.6));
           vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
           gl_Position = projectionMatrix * mvPosition;
           #include <fog_vertex>

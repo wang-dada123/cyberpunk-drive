@@ -2,8 +2,8 @@ import { useEffect } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { carPose, carVisual } from './Car'
-import { tunnelRoof } from './Structures'
-import { TUNNEL, TUNNEL_R1 } from '../data/mapLayout'
+import { tunnelRoof, garageLevels, spiralClip } from './Structures'
+import { TUNNEL, TUNNEL_R1, structCeil, garageLocal, GARAGE, SPIRAL } from '../data/mapLayout'
 import { isMobile } from '../utils/isMobile'
 
 /**
@@ -43,6 +43,8 @@ const _vel = new THREE.Vector3(), _rawVel = new THREE.Vector3()
 const _focus = new THREE.Vector3(), _focusVel = new THREE.Vector3(), _goal = new THREE.Vector3(), _dv = new THREE.Vector3()
 const _tmp = new THREE.Vector3(), _m = new THREE.Matrix4(), _up = new THREE.Vector3(0, 1, 0)
 const _topDir = new THREE.Vector3(0, Math.sin(P_PITCH), Math.cos(P_PITCH))
+const _topDirV = new THREE.Vector3(0, 1, 0.12)
+let spTopK = 0
 // 每档输出
 type Pose = { pos: THREE.Vector3; look: THREE.Vector3; quat: THREE.Quaternion; fov: number }
 const mk = (fov: number): Pose => ({ pos: new THREE.Vector3(), look: new THREE.Vector3(), quat: new THREE.Quaternion(), fov })
@@ -140,7 +142,9 @@ function clampTunnel(p: THREE.Vector3, carY: number) {
 const lookQuat = (p: Pose) => { _m.lookAt(p.pos, p.look, _up); p.quat.setFromRotationMatrix(_m) }
 
 export function FollowCamera() {
-  const { camera, scene } = useThree()
+  const { camera, scene, gl: renderer } = useThree()
+  renderer.localClippingEnabled = true
+  if (import.meta.env.DEV) Object.assign(window, { __spClip: spiralClip, __cam: camera })
   const cam = camera as THREE.PerspectiveCamera
   useCamInput(cam)
   // priority 0：在 Physics(-50，写入插值后 mesh 位姿) 之后、EffectComposer(1，渲染) 之前
@@ -200,6 +204,10 @@ export function FollowCamera() {
     if (inTunnel) clampTunnel(_tmp, _pos.y)
     third.pos.lerp(_tmp, damp(T_K_POS, dt))
     if (inTunnel) clampTunnel(third.pos, _pos.y)
+    { // 停车场 / 螺旋坡道：相机压在头顶楼板之下（不穿顶）
+      const ce = structCeil(third.pos.x, third.pos.z, _pos.y)
+      if (ce < Infinity) third.pos.y = Math.max(_pos.y + 0.9, Math.min(third.pos.y, ce))
+    }
     third.look.set(-Math.sin(tYaw) * T_LOOK_AHEAD, T_LOOK_H, -Math.cos(tYaw) * T_LOOK_AHEAD).add(_focus)
     lookQuat(third)
 
@@ -213,13 +221,21 @@ export function FollowCamera() {
 
     // 俯视：固定朝向只平移
     topDist += (topDistT - topDist) * damp(K_ZOOM, dt)
-    _tmp.copy(_topDir).multiplyScalar(topDist).add(_focus); _tmp.y += 0.5
+    // 螺旋内俯视改为近垂直（45° 斜俯视时相机会落进相邻楼体）
+    { const dx = _focus.x - SPIRAL.c[0], dz = _focus.z - SPIRAL.c[1]
+      spTopK += ((dx * dx + dz * dz < (SPIRAL.R + 12) ** 2 ? 1 : 0) - spTopK) * damp(3, dt) }
+    _tmp.copy(_topDir).lerp(_topDirV, spTopK).normalize().multiplyScalar(topDist).add(_focus); _tmp.y += 0.5
     top.pos.lerp(_tmp, damp(P_K_POS, dt))
     _tmp.copy(_focus); _tmp.y = 0.5
     top.look.lerp(_tmp, damp(P_K_LOOK, dt))
     lookQuat(top)
 
     if (tunnelRoof.current) tunnelRoof.current.visible = camState.mode !== 'top'
+    { const gl = garageLocal(_pos.x, _pos.z), topM = camState.mode === 'top' && Math.abs(gl[0]) < GARAGE.HU + 4 && Math.abs(gl[1]) < GARAGE.HV + 4
+      if (garageLevels.l1) garageLevels.l1.visible = !(topM && _pos.y < 3.3)
+      if (garageLevels.l2) garageLevels.l2.visible = !(topM && _pos.y < 7.3) }
+    { const dx = _pos.x - SPIRAL.c[0], dz = _pos.z - SPIRAL.c[1], inS = camState.mode === 'top' && dx * dx + dz * dz < (SPIRAL.R + 12) ** 2
+      spiralClip.constant = inS ? _pos.y + 2.6 : 1e4 }
     // 输出 + 切换过渡
     const p = poses[camState.mode]
     let fov = p.fov
@@ -231,6 +247,7 @@ export function FollowCamera() {
       fov = from.fov + (p.fov - from.fov) * s
     } else { cam.position.copy(p.pos); cam.quaternion.copy(p.quat) }
     camStats.transT = transT
+    if (import.meta.env.DEV && (window as any).__overview) { const o = (window as any).__overview; cam.position.set(o[0], o[2], o[1]); cam.up.set(0, 0, -1); cam.lookAt(o[0], 0, o[1]); cam.up.set(0, 1, 0); scene.fog = null; if (cam.far < 2000) { cam.far = 2000; cam.updateProjectionMatrix() } }
     if (!Number.isFinite(cam.position.x + cam.position.y + cam.position.z + cam.quaternion.w)) {
       cam.position.copy(from.pos); cam.quaternion.copy(from.quat); camStats.nan++; inited = false
     }

@@ -1,5 +1,5 @@
 /** 导航数据（美术定稿配色）：目的地主色、地标、路牌、出生点三向箭头 */
-import { BRIDGE, TUNNEL } from './mapLayout'
+import { BRIDGE, TUNNEL, GARAGE, SPIRAL } from './mapLayout'
 
 export const NAV = {
   portfolio: { name: '作品街', color: '#00B0FF', sub: '#E8F4FF' },
@@ -8,6 +8,8 @@ export const NAV = {
   alley: { name: '雨夜窄巷', color: '#4FC3F7' },
   bridge: { name: '天桥', color: '#E8F4FF' },
   tunnel: { name: '隧道', color: '#4FC3F7' },
+  garage: { name: '停车场', color: '#FFB74D' },
+  spiral: { name: '屋顶坡道', color: '#64FFDA' },
 } as const
 export type NavId = keyof typeof NAV
 const Q = Math.SQRT1_2
@@ -21,6 +23,8 @@ export const LANDMARKS: Array<{ id: NavId; p: [number, number]; h: number; what:
   { id: 'alley', p: [0, 208], h: 60, what: '窄巷尽头门上空冰蓝光柱' },
   { id: 'bridge', p: [BRIDGE.c[0], BRIDGE.c[1]], h: 34, what: '天桥中央冷白光柱' },
   { id: 'tunnel', p: TUN_IN, h: 26, what: '隧道口冰蓝光柱' },
+  { id: 'garage', p: GARAGE.c, h: 30, what: '停车场琥珀光柱' },
+  { id: 'spiral', p: SPIRAL.c, h: 36, what: '螺旋坡道芯筒薄荷光柱' },
 ]
 export const landmarkOf = (id: NavId) => LANDMARKS.find((l) => l.id === id)!.p
 
@@ -33,6 +37,8 @@ export const SIGNPOSTS: Array<{ p: [number, number]; rot: number; lines: SignLin
   { p: [-9, 34], rot: Math.PI, lines: [{ id: 'alley', arrow: 'up' }] },
   { p: [Q * 36 + 5, -Q * 36 + 5], rot: -Math.PI / 4, lines: [{ id: 'bridge', arrow: 'up' }] },
   { p: [-Q * 36 - 5, Q * 36 - 5], rot: (3 * Math.PI) / 4, lines: [{ id: 'tunnel', arrow: 'up' }] },
+  { p: [Q * 36 - 5, Q * 36 + 5], rot: (-3 * Math.PI) / 4, lines: [{ id: 'garage', arrow: 'up' }] },
+  { p: [-Q * 36 + 5, -Q * 36 - 5], rot: Math.PI / 4, lines: [{ id: 'spiral', arrow: 'up' }] },
   // r75 环路口
   { p: [9, -63], rot: 0, lines: [{ id: 'portfolio', arrow: 'up' }, { id: 'bridge', arrow: 'right' }, { id: 'hidden', arrow: 'left' }] },
   { p: [63, 9], rot: -Math.PI / 2, lines: [{ id: 'aiStall', arrow: 'up' }, { id: 'bridge', arrow: 'left' }, { id: 'alley', arrow: 'right' }] },

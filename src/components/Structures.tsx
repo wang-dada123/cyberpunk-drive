@@ -3,8 +3,9 @@ import { CuboidCollider, RigidBody, TrimeshCollider } from '@react-three/rapier'
 import { TriMeshFlags } from '@dimforge/rapier3d-compat'
 import { Text } from '@react-three/drei'
 import * as THREE from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { colors } from '../theme/colors'
-import { BRIDGE, TUNNEL, TUNNEL_R1, bridgeHeight, tunnelDepth, eggs } from '../data/mapLayout'
+import { BRIDGE, TUNNEL, TUNNEL_R1, bridgeHeight, tunnelDepth, eggs, GARAGE, garageRampA, garageRampB, SPIRAL, spiralH, spiralFrame } from '../data/mapLayout'
 
 /**
  * 第一批过渡带结构：A 东北天桥、C 西南下沉隧道 + 彩蛋占位。
@@ -30,6 +31,7 @@ function toGeo(s: Strip) {
   g.computeVertexNormals()
   return g
 }
+const mergeG = (gs: THREE.BufferGeometry[]) => mergeGeometries(gs)!
 const dim = (hex: string, k: number) => new THREE.Color(hex).multiplyScalar(k)
 const deckMat = new THREE.MeshStandardMaterial({ color: '#0F1826', roughness: 0.5, metalness: 0.6, side: THREE.DoubleSide })
 const wallMat = new THREE.MeshStandardMaterial({ color: '#0B1420', roughness: 0.7, metalness: 0.3, side: THREE.DoubleSide })
@@ -126,6 +128,148 @@ function Tunnel() {
   )
 }
 
+
+/** 焊接重复顶点 → 相邻条带共享边，FIX_INTERNAL_EDGES 才能把拼缝当内部边处理（不磕） */
+function weld(st: Strip) {
+  const map = new Map<string, number>(), pos: number[] = [], remap: number[] = []
+  for (let i = 0; i < st.pos.length / 3; i++) {
+    const k = st.pos.slice(i * 3, i * 3 + 3).map((v) => Math.round(v * 1000)).join(',')
+    let j = map.get(k)
+    if (j === undefined) { j = pos.length / 3; map.set(k, j); pos.push(st.pos[i * 3], st.pos[i * 3 + 1], st.pos[i * 3 + 2]) }
+    remap.push(j)
+  }
+  return { v: new Float32Array(pos), i: new Uint32Array(flipTri(st.idx.map((k) => remap[k]))) }
+}
+const range = (a: number, b: number, step = 1) => { const o: number[] = []; const n = Math.max(1, Math.round(Math.abs(b - a) / step)); for (let i = 0; i <= n; i++) o.push(a + (b - a) * i / n); return o }
+/** 板底：顶面 ribbon 下移 0.3m（翻面） */
+const under = (st: Strip, dst: Strip) => { const b = dst.pos.length / 3; for (let i = 0; i < st.pos.length; i += 3) dst.pos.push(st.pos[i], st.pos[i + 1] - 0.3, st.pos[i + 2]); dst.idx.push(...flipTri(st.idx).map((k) => k + b)) }
+const amberGlow = new THREE.MeshBasicMaterial({ color: dim('#FFB74D', 1.0), toneMapped: false, side: THREE.DoubleSide })
+const mintGlow = new THREE.MeshBasicMaterial({ color: dim('#64FFDA', 0.85), toneMapped: false, side: THREE.DoubleSide })
+const garageDeckMat = deckMat.clone()
+// 螺旋：俯视时用裁剪面切掉车上方的环（常数 1e4 = 不裁剪，避免切换重编译）
+export const spiralClip = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e4)
+const spiralDeckMat = deckMat.clone(), spiralWallMat = wallMat.clone(), spiralGlow = mintGlow.clone()
+for (const m of [spiralDeckMat, spiralWallMat, spiralGlow]) m.clippingPlanes = [spiralClip]
+/** 停车场楼层可见性（俯视档：车在下层时隐藏上层楼板，FollowCamera 控制） */
+export const garageLevels: { l1: THREE.Object3D | null; l2: THREE.Object3D | null } = { l1: null, l2: null }
+
+function Garage() {
+  const { HU, HV, LANE, A0 } = GARAGE
+  const g = useMemo(() => {
+    const L1 = newStrip(), L2 = newStrip(), col = newStrip(), walls = newStrip(), rails = newStrip(), u1 = newStrip(), u2 = newStrip()
+    const deck = (dst: Strip, u: number[], v0: number, v1: number, h: (u: number) => number) => {
+      const a = u.map((x) => [v0, h(x) + 0.02, x]), b = u.map((x) => [v1, h(x) + 0.02, x])
+      ribbon(dst, a, b); ribbon(col, a, b)
+    }
+    const U = range(-HU, HU)
+    deck(L1, U, -LANE, LANE, () => 4)
+    deck(L1, range(A0 - 6, HU), -HV, -LANE, garageRampA)
+    deck(L2, U, LANE, HV, garageRampB)
+    deck(L2, U, -HV, -LANE, () => 8); deck(L2, U, -LANE, LANE, () => 8)
+    under(L1, u1); under(L2, u2)
+    // 墙：沿 u 或 v 的折线，bot/top 为参数函数；顶边加发光护栏线
+    const wallU = (v: number, u0: number, u1_: number, bot: (u: number) => number, top: (u: number) => number, glow = true) => {
+      const us = range(u0, u1_)
+      ribbon(walls, us.map((u) => [v, bot(u), u]), us.map((u) => [v, top(u), u]))
+      if (glow) ribbon(rails, us.map((u) => [v * 0.998, top(u) - 0.1, u]), us.map((u) => [v * 0.998, top(u), u]))
+    }
+    const wallV = (u: number, v0: number, v1: number, bot: number, top: number, glow = true) => {
+      ribbon(walls, [[v0, bot, u], [v1, bot, u]], [[v0, top, u], [v1, top, u]])
+      if (glow) ribbon(rails, [[v0, top - 0.1, u * 0.999], [v1, top - 0.1, u * 0.999]], [[v0, top, u * 0.999], [v1, top, u * 0.999]])
+    }
+    const c = (k: number) => () => k
+    // A 道（地面→1 层）
+    wallU(-HV, A0, GARAGE.A1, c(-0.1), (u) => garageRampA(u) + 1.1)
+    wallU(-LANE, A0, GARAGE.A1, c(-0.1), c(5.1))
+    wallV(GARAGE.A1, -HV, -LANE, -0.1, 3.7, false)
+    wallU(-HV, GARAGE.A1, HU, c(3.7), c(5.1))
+    // 1 层周边
+    wallV(HU, -HV, HV, 3.7, 5.1); wallV(-HU, -LANE, LANE, 3.7, 5.1)
+    // B 道（1 层→2 层）
+    wallU(LANE, GARAGE.B1, GARAGE.B0, c(3.7), c(9.1))
+    wallU(HV, GARAGE.B1, GARAGE.B0, c(3.7), (u) => garageRampB(u) + 1.1)
+    wallU(HV, GARAGE.B0, HU, c(3.7), c(5.1)); wallU(HV, -HU, GARAGE.B1, c(7.7), c(9.1))
+    // 2 层（屋顶）周边
+    wallU(-HV, -HU, HU, c(7.7), c(9.1)); wallV(HU, -HV, LANE, 7.7, 9.1); wallV(-HU, -HV, HV, 7.7, 9.1)
+    wallU(LANE, GARAGE.B0, HU, c(7.7), c(9.1))
+    const cw = weld(col)
+    const wv = new Float32Array(walls.pos), wi = new Uint32Array(walls.idx)
+    const m1 = toGeo(L1), m2 = toGeo(L2)
+    const mg1 = mergeG([m1, toGeo(u1)]), mg2 = mergeG([m2, toGeo(u2)])
+    return { cw, wv, wi, l1: mg1, l2: mg2, walls: toGeo(walls), rails: toGeo(rails) }
+  }, [HU, HV, LANE, A0])
+  const ry = Math.atan2(GARAGE.d[0], GARAGE.d[1])
+  // 局部轴：three 的 group 旋转 ry 后，本地 +Z → d，本地 +X → (cos ry, -sin ry)；需 = n
+  const cols: [number, number][] = [[-31.6, 4.4], [31.6, -4], [31.6, 4], [31.6, -12], [31.6, 12], [-31.6, 12], [0, 12], [0, -12], [-31.5, -12.5]]
+  return (
+    <group position={[GARAGE.c[0], 0, GARAGE.c[1]]} rotation={[0, ry, 0]}>
+      <RigidBody type="fixed" colliders={false}>
+        <TrimeshCollider args={[g.cw.v, g.cw.i, TriMeshFlags.FIX_INTERNAL_EDGES] as never} /><TrimeshCollider args={[g.wv, g.wi]} />
+        {cols.map(([u, v]) => <CuboidCollider key={`${u},${v}`} args={[0.4, 3.85, 0.4]} position={[v, 3.85, u]} />)}
+      </RigidBody>
+      <group userData={{ dynamic: true }}>
+        <mesh ref={(o) => { garageLevels.l1 = o }} geometry={g.l1} material={garageDeckMat} />
+        <mesh ref={(o) => { garageLevels.l2 = o }} geometry={g.l2} material={garageDeckMat} />
+      </group>
+      <mesh geometry={g.walls} material={wallMat} />
+      <mesh geometry={g.rails} material={bridgeGlow} />
+      {cols.map(([u, v]) => <mesh key={`${u},${v}`} position={[v, 3.85, u]} material={wallMat}><boxGeometry args={[0.8, 7.7, 0.8]} /></mesh>)}
+      {/* 琥珀色只点在出入口：A 道入口门楣 + 屋顶出口 */}
+      <mesh position={[-(HV + LANE) / 2, 3.3, -HU]} material={amberGlow}><boxGeometry args={[HV - LANE, 0.12, 0.12]} /></mesh>
+      <mesh position={[-(HV + LANE) / 2, 0.03, A0 - 4]} rotation={[-Math.PI / 2, 0, 0]} material={amberGlow}><planeGeometry args={[HV - LANE - 1, 0.25]} /></mesh>
+      <mesh position={[(HV + LANE) / 2, 8.05, GARAGE.B1 - 2]} rotation={[-Math.PI / 2, 0, 0]} material={amberGlow}><planeGeometry args={[HV - LANE - 1, 0.25]} /></mesh>
+    </group>
+  )
+}
+
+function Spiral() {
+  const { L, W, ROOF, ROOF_W, LEAD, c } = SPIRAL
+  const g = useMemo(() => {
+    const deck = newStrip(), walls = newStrip(), rails = newStrip(), und = newStrip()
+    const ss = range(-LEAD, L + ROOF, 0.4)
+    const hw = (s: number) => s <= L ? W / 2 : W / 2 + (ROOF_W - W) / 2 * Math.min(1, (1 - Math.cos(Math.PI * Math.min(1, (s - L) / 6))) / 2)
+    const P = (s: number, off: number, y: number) => { const f = spiralFrame(s); return [f.p[0] + f.N[0] * off, y, f.p[1] + f.N[1] * off] }
+    const h = (s: number) => spiralH(s) + 0.02
+    // 径向 4 分：相邻条带共享顶点（weld），减小螺旋面扭曲带来的折痕（上行颠簸）
+    const RK = [1, 0.5, 0, -0.5, -1]
+    for (let k = 0; k < RK.length - 1; k++) ribbon(deck, ss.map((s) => P(s, RK[k] * hw(s), h(s))), ss.map((s) => P(s, RK[k + 1] * hw(s), h(s))))
+    under(deck, und)
+    const twoPi = 2 * Math.PI * SPIRAL.R
+    const ws = ss.filter((s) => s >= 0)
+    // 内侧墙：螺旋段落到地面（中心芯筒封死）；屋顶段只做护栏。外侧：有上一圈覆盖/高处时离地 ≥3.5m 留净空（引道从下穿过）
+    const innerBot = (s: number) => s <= L ? -0.1 : spiralH(s) - 1.2
+    const outerBot = (s: number) => (s > L || spiralH(s) > 7 || s > twoPi) ? spiralH(s) - 3.5 : -0.1
+    ribbon(walls, ws.map((s) => P(s, -hw(s), innerBot(s))), ws.map((s) => P(s, -hw(s), h(s) + 1.1)))
+    ribbon(walls, ws.map((s) => P(s, hw(s), outerBot(s))), ws.map((s) => P(s, hw(s), h(s) + 1.1)))
+    for (const k of [-1, 1]) ribbon(rails, ws.map((s) => P(s, k * hw(s) * 0.995, h(s) + 1.0)), ws.map((s) => P(s, k * hw(s) * 0.995, h(s) + 1.12)))
+    // 径向挡墙：h=7 处，防止从外侧净空钻到低处坡底
+    const s7 = ss.find((s) => spiralH(s) >= 7)!
+    ribbon(walls, [P(s7, -W / 2, -0.1), P(s7, W / 2, -0.1)], [P(s7, -W / 2, spiralH(s7) - 0.3), P(s7, W / 2, spiralH(s7) - 0.3)])
+    // 屋顶尽端护栏
+    const e = L + ROOF
+    ribbon(walls, [P(e, -ROOF_W / 2, 11), P(e, ROOF_W / 2, 11)], [P(e, -ROOF_W / 2, 13.1), P(e, ROOF_W / 2, 13.1)])
+    ribbon(rails, [P(e - 0.05, -ROOF_W / 2, 13.0), P(e - 0.05, ROOF_W / 2, 13.0)], [P(e - 0.05, -ROOF_W / 2, 13.12), P(e - 0.05, ROOF_W / 2, 13.12)])
+    const cw = weld(deck)
+    const cols = [L + 9, L + 19].flatMap((s) => [-1, 1].map((k) => P(s, k * (ROOF_W / 2 - 0.6), 0)))
+    return { cw, wv: new Float32Array(walls.pos), wi: new Uint32Array(walls.idx), deck: mergeG([toGeo(deck), toGeo(und)]), walls: toGeo(walls), rails: toGeo(rails), cols }
+  }, [L, W, ROOF, ROOF_W, LEAD])
+  const coreR = SPIRAL.R - W / 2 - 0.15
+  return (
+    <group>
+      <RigidBody type="fixed" colliders={false}>
+        <TrimeshCollider args={[g.cw.v, g.cw.i, TriMeshFlags.FIX_INTERNAL_EDGES] as never} /><TrimeshCollider args={[g.wv, g.wi]} />
+        {g.cols.map((p, i) => <CuboidCollider key={i} args={[0.45, 5.85, 0.45]} position={[p[0], 5.85, p[2]]} />)}
+      </RigidBody>
+      <mesh geometry={g.deck} material={spiralDeckMat} />
+      <mesh geometry={g.walls} material={spiralWallMat} />
+      <mesh geometry={g.rails} material={spiralGlow} />
+      {g.cols.map((p, i) => <mesh key={i} position={[p[0], 5.85, p[2]]} material={spiralWallMat}><boxGeometry args={[0.9, 11.7, 0.9]} /></mesh>)}
+      <mesh position={[c[0], 6.6, c[1]]} material={spiralWallMat}><cylinderGeometry args={[coreR, coreR, 13.2, 20, 1, true]} /></mesh>
+      <mesh position={[c[0], 13.2, c[1]]} rotation={[-Math.PI / 2, 0, 0]} material={spiralWallMat}><circleGeometry args={[coreR, 20]} /></mesh>
+    </group>
+  )
+}
+
 function Eggs() {
   return (
     <>
@@ -144,6 +288,8 @@ export function Structures() {
     <>
       <Bridge />
       <Tunnel />
+      <Garage />
+      <Spiral />
       <Eggs />
     </>
   )

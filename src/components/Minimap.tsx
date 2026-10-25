@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { segs, rings, PLAZA_R, WORLD_HALF, eggs, BRIDGE, TUNNEL, TUNNEL_R1 } from '../data/mapLayout'
+import { segs, rings, PLAZA_R, WORLD_HALF, eggs, BRIDGE, TUNNEL, TUNNEL_R1, GARAGE, garageW, SPIRAL } from '../data/mapLayout'
 import { NAV, type NavId } from '../data/nav'
 import { carPose } from './Car'
 import { loadFonts } from './Nav'
@@ -12,7 +12,7 @@ import { isMobile } from '../utils/isMobile'
  */
 export const discoveredEggs = new Set<string>()
 const GUIDE: Record<string, NavId> = { portfolio: 'portfolio', aiStall: 'aiStall', hidden: 'hidden', alley: 'alley' }
-const LABELS: Array<[NavId, number, number]> = [['portfolio', 0, -150], ['aiStall', 150, -14], ['hidden', -150, -14], ['alley', 0, 138], ['bridge', BRIDGE.c[0] + 22, BRIDGE.c[1]], ['tunnel', -(TUNNEL.R0 + 50) * Math.SQRT1_2 - 22, (TUNNEL.R0 + 50) * Math.SQRT1_2]]
+const LABELS: Array<[NavId, number, number]> = [['portfolio', 0, -150], ['aiStall', 150, -14], ['hidden', -150, -14], ['alley', 0, 138], ['bridge', BRIDGE.c[0] + 22, BRIDGE.c[1]], ['tunnel', -(TUNNEL.R0 + 50) * Math.SQRT1_2 - 22, (TUNNEL.R0 + 50) * Math.SQRT1_2], ['garage', GARAGE.c[0] + 26, GARAGE.c[1] - 12], ['spiral', SPIRAL.c[0] - 4, SPIRAL.c[1] + 26]]
 
 function draw(cv: HTMLCanvasElement, px: number, big: boolean) {
   const dpr = Math.min(2, window.devicePixelRatio || 1)
@@ -39,13 +39,17 @@ function draw(cv: HTMLCanvasElement, px: number, big: boolean) {
   g.lineWidth = Math.max(minW * 1.4, 9)
   g.strokeStyle = NAV.bridge.color + 'B3'; g.beginPath(); g.moveTo(BRIDGE.c[0] - Q * L, BRIDGE.c[1] - Q * L); g.lineTo(BRIDGE.c[0] + Q * L, BRIDGE.c[1] + Q * L); g.stroke()
   g.strokeStyle = NAV.tunnel.color + 'B3'; g.setLineDash([6, 5]); g.beginPath(); g.moveTo(-TUNNEL.R0 * Q, TUNNEL.R0 * Q); g.lineTo(-TUNNEL_R1 * Q, TUNNEL_R1 * Q); g.stroke(); g.setLineDash([])
+  // 停车场（琥珀 70% 矩形）/ 螺旋坡道（薄荷 70% 圆环）
+  g.strokeStyle = NAV.garage.color + 'B3'; g.lineWidth = Math.max(minW, 3)
+  g.beginPath(); for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { const p = garageW(u * GARAGE.HU, v * GARAGE.HV); g.lineTo(p[0], p[1]) } g.closePath(); g.fillStyle = NAV.garage.color + '40'; g.fill(); g.stroke()
+  g.strokeStyle = NAV.spiral.color + 'B3'; g.lineWidth = Math.max(minW, SPIRAL.W); g.beginPath(); g.arc(SPIRAL.c[0], SPIRAL.c[1], SPIRAL.R, 0, Math.PI * 2); g.stroke()
   g.fillStyle = '#64FFDA'
   for (const e of eggs) if (discoveredEggs.has(e.id)) { g.beginPath(); g.arc(e.p[0], e.p[2], 2.2 / s, 0, Math.PI * 2); g.fill() }
   g.restore()
   g.fillStyle = '#E8F4FF'; g.font = `500 ${big ? 13 : 10}px "NavSC", "Noto Sans SC", "Noto Sans CJK SC", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'
   g.shadowColor = '#050A14'; g.shadowBlur = 3
   for (const [id, x, z] of LABELS) {
-    if (!big && (id === 'bridge' || id === 'tunnel')) continue // 小图只标四大街区，放大后全部标
+    if (!big && (id === 'bridge' || id === 'tunnel' || id === 'garage' || id === 'spiral')) continue // 小图只标四大街区，放大后全部标
     g.fillText(NAV[id].name, c + x * s, c + z * s)
   }
 }

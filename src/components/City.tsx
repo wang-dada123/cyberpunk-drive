@@ -61,38 +61,78 @@ function rng(seed: number) {
   return () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646
 }
 
+/** 建筑排布 v2（硬规则）：11m 方格无抖动、只 0/90°；沿轴向道路统一退线 1.5m；
+ *  楼间缝只允许 0（贴死）或 ≥8m；路口楼切 3m 角（L 形两盒）；碎块(<4m)直接去掉 */
+export const SETBACK = 1.5, MIN_GAP = 8, CHAMFER = 3
+type Rect = [number, number, number, number] // x0 x1 z0 z1
+export function layoutBlocks() {
+  const cells: { r: Rect; cut: [number, number] }[] = []
+  const H = 5.5, STEP = 11
+  const axis = segs.filter((s) => Math.hypot(s.b[0] - s.a[0], s.b[1] - s.a[1]) > 1 && (Math.abs(s.a[0] - s.b[0]) < 1e-3 || Math.abs(s.a[1] - s.b[1]) < 1e-3))
+  for (let gx = -WORLD_HALF + 8; gx <= WORLD_HALF - 8; gx += STEP) {
+    for (let gz = -WORLD_HALF + 8; gz <= WORLD_HALF - 8; gz += STEP) {
+      const r: Rect = [gx - H, gx + H, gz - H, gz + H]
+      if (gx > 25 && Math.abs(gz) - H < 11.5 && Math.abs(gz) < 25) continue // 让出 AI 摊位带
+      let ok = true, cx = 0, cz = 0
+      for (const sg of axis) {
+        const vert = Math.abs(sg.a[0] - sg.b[0]) < 1e-3 // 沿 z 走
+        const c = vert ? sg.a[0] : sg.a[1], half = sg.w / 2 + SETBACK
+        const lo = Math.min(vert ? sg.a[1] : sg.a[0], vert ? sg.b[1] : sg.b[0]) - sg.w / 2 - SETBACK
+        const hi = Math.max(vert ? sg.a[1] : sg.a[0], vert ? sg.b[1] : sg.b[0]) + sg.w / 2 + SETBACK
+        const [a0, a1, b0, b1] = vert ? [r[0], r[1], r[2], r[3]] : [r[2], r[3], r[0], r[1]]
+        if (b1 <= lo || b0 >= hi || a1 <= c - half || a0 >= c + half) continue
+        const mid = (a0 + a1) / 2
+        if (Math.abs(mid - c) < half) { ok = false; break }
+        if (mid > c) { if (vert) { r[0] = c + half; cx = -1 } else { r[2] = c + half; cz = -1 } }
+        else { if (vert) { r[1] = c - half; cx = 1 } else { r[3] = c - half; cz = 1 } }
+      }
+      if (!ok || r[1] - r[0] < 4 || r[3] - r[2] < 4) continue
+      // 斜路/环路/结构区：边界采样净距 ≥ 退线
+      let clear = true
+      for (let t = 0; t <= 1.0001 && clear; t += 1 / 11) for (const [x, z] of [[r[0] + (r[1] - r[0]) * t, r[2]], [r[0] + (r[1] - r[0]) * t, r[3]], [r[0], r[2] + (r[3] - r[2]) * t], [r[1], r[2] + (r[3] - r[2]) * t]]) if (roadClearance(x, z) < SETBACK - 0.05) { clear = false; break }
+      if (clear) cells.push({ r, cut: [cx, cz] })
+    }
+  }
+  const out = cells.flatMap((c, g) => chamferBoxes(c.r, c.cut).map((r, k) => ({ r, g, main: k === 0 })))
+  // 缝修正（切角后）：任意两楼 0<间距<8 → 去掉面积小的，直到没有
+  const gap = (a: Rect, b: Rect) => Math.hypot(Math.max(0, a[0] - b[1], b[0] - a[1]), Math.max(0, a[2] - b[3], b[2] - a[3]))
+  const area = (a: Rect) => (a[1] - a[0]) * (a[3] - a[2])
+  for (let changed = true; changed;) {
+    changed = false
+    for (let i = 0; i < out.length && !changed; i++) for (let j = i + 1; j < out.length; j++) {
+      const g = gap(out[i].r, out[j].r)
+      if (g > 0.01 && g < MIN_GAP) { out.splice(area(out[i].r) < area(out[j].r) ? i : j, 1); changed = true; break }
+    }
+  }
+  return out
+}
+/** 路口切角：两侧都退线的楼拆成 L 形两盒（缺 3×3 角） */
+export function chamferBoxes(r: Rect, cut: [number, number]): Rect[] {
+  const [cx, cz] = cut
+  if (!cx || !cz || r[1] - r[0] < CHAMFER + 3 || r[3] - r[2] < CHAMFER + 3) return [r]
+  const zc = cz > 0 ? r[3] - CHAMFER : r[2] + CHAMFER, xc = cx > 0 ? r[1] - CHAMFER : r[0] + CHAMFER
+  const A: Rect = cz > 0 ? [r[0], r[1], r[2], zc] : [r[0], r[1], zc, r[3]]
+  const B: Rect = cx > 0 ? [r[0], xc, cz > 0 ? zc : r[2], cz > 0 ? r[3] : zc] : [xc, r[1], cz > 0 ? zc : r[2], cz > 0 ? r[3] : zc]
+  return [A, B]
+}
+
 function buildCity() {
   const r = rng(7)
   const bodies: Box[] = []
   const roofs: Box[] = []
   const strips: Box[] = []
-  const STEP = 11
-  for (let gx = -WORLD_HALF + 8; gx <= WORLD_HALF - 8; gx += STEP) {
-    for (let gz = -WORLD_HALF + 8; gz <= WORLD_HALF - 8; gz += STEP) {
-      const x = gx + (r() - 0.5) * 3
-      const z = gz + (r() - 0.5) * 3
-      const w = 5 + r() * 4
-      const d = 5 + r() * 4
-      const half = Math.hypot(w, d) / 2
-      if (x > 25 && Math.abs(z) - half < 11.5 && Math.abs(z) < 25) continue // 让出 AI 摊位带
-      if (roadClearance(x, z) < half + 1.6) {
-        // 太挤：试更小一号
-        const w2 = 3.6, d2 = 3.6
-        if (roadClearance(x, z) < Math.hypot(w2, d2) / 2 + 1.6) continue
-        pushB(x, z, w2, d2)
-        continue
-      }
-      pushB(x, z, w, d)
-    }
+  const hs = new Map<number, number>()
+  for (const { r: p, g, main } of layoutBlocks()) {
+    const x = (p[0] + p[1]) / 2, z = (p[2] + p[3]) / 2
+    if (!hs.has(g)) hs.set(g, 8 + r() * 14 + Math.min(Math.hypot(x, z) / 8, 14) * r())
+    pushB(x, z, p[1] - p[0], p[3] - p[2], hs.get(g)!, main)
   }
-  function pushB(x: number, z: number, w: number, d: number) {
-    const dist = Math.hypot(x, z)
-    const h = 8 + r() * 14 + Math.min(dist / 8, 14) * r()
+  function pushB(x: number, z: number, w: number, d: number, h: number, main: boolean) {
     const did = districtAt(x, z)
     const acc = districts[did].accent
     bodies.push({ p: [x, h / 2, z], s: [w, h, d] })
     roofs.push({ p: [x, h + 0.08, z], s: [w * 0.96, 0.16, d * 0.96], c: dim(acc, 0.22) })
-    if (r() < 0.4) {
+    if (main && r() < 0.4) {
       // 朝广场方向的立面竖向灯带
       const alongX = Math.abs(x) < Math.abs(z)
       const sx = alongX ? 0 : -Math.sign(x) * (w / 2 + 0.03)
@@ -101,6 +141,7 @@ function buildCity() {
       strips.push({ p: [x + sx + (alongX ? off : 0), h * 0.55, z + sz + (alongX ? 0 : off)], s: alongX ? [0.18, h * 0.8, 0.06] : [0.06, h * 0.8, 0.18], c: dim(acc, 0.6) })
     }
   }
+  if (import.meta.env.DEV) Object.assign(window, { __bodies: bodies, __segs: segs })
   // 路面导向光带：沿有 guide 的街道中线
   for (const s of segs) {
     if (!s.guide) continue

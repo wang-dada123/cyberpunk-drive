@@ -2,7 +2,7 @@ import { SPAWN } from '../data/mapLayout'
 import { Suspense, useRef } from 'react'
 import { CarModel } from './CarModel'
 import { useFrame } from '@react-three/fiber'
-import { CapsuleCollider, CuboidCollider, RigidBody, useAfterPhysicsStep, useBeforePhysicsStep, type RapierRigidBody } from '@react-three/rapier'
+import { CapsuleCollider, CuboidCollider, RigidBody, useAfterPhysicsStep, useBeforePhysicsStep, useRapier, type RapierRigidBody } from '@react-three/rapier'
 import * as THREE from 'three'
 import { getDriveInput } from '../hooks/useControls'
 
@@ -29,6 +29,8 @@ export const carPose = {
  */
 export function Car() {
   const body = useRef<RapierRigidBody>(null)
+  const rapierCtx = useRapier()
+  if (import.meta.env.DEV) Object.assign(window, { __rapier: rapierCtx })
   const forward = useRef(new THREE.Vector3())
   const quat = useRef(new THREE.Quaternion())
   const euler = useRef(new THREE.Euler())

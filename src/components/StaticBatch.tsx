@@ -28,6 +28,7 @@ const f4 = (c?: THREE.Color) => (c ? `${c.r.toFixed(4)},${c.g.toFixed(4)},${c.b.
 function matKey(m: THREE.Material) {
   const a = m as THREE.MeshStandardMaterial & THREE.MeshBasicMaterial
   if (m.onBeforeCompile.toString() !== THREE.Material.prototype.onBeforeCompile.toString()) return m.uuid
+  if (m.clippingPlanes?.length) return m.uuid
   for (const v of Object.values(m)) if ((v as THREE.Texture)?.isTexture) return m.uuid
   if (m.type !== 'MeshBasicMaterial' && m.type !== 'MeshStandardMaterial') return m.uuid
   return [m.type, f4(a.color), f4(a.emissive), a.emissiveIntensity, a.roughness, a.metalness, m.transparent, m.opacity, m.side, m.blending, m.depthWrite, m.depthTest, m.toneMapped, a.fog, a.wireframe, m.vertexColors, m.polygonOffset, m.polygonOffsetFactor, m.alphaTest, m.visible].join('|')

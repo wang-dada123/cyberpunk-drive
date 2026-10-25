@@ -18,7 +18,7 @@ export const ringDim = (r: Ring) => r.r > 100
 
 const D = 45 * (Math.PI / 180)
 const at = (sx: number, sz: number, r: number): [number, number] => [sx * Math.sin(D) * r, sz * Math.cos(D) * r]
-const diag = (sx: number, sz: number, r0 = PLAZA_R, r1 = 222): Seg => ({ a: at(sx, sz, r0), b: at(sx, sz, r1), w: 10 })
+const diag = (sx: number, sz: number, r0 = PLAZA_R, r1 = 222): Seg => ({ a: at(sx, sz, r0), b: at(sx, sz, r1), w: 12 })
 
 /* ---------- 过渡带结构（第一批：A 天桥 / C 隧道） ---------- */
 /** A 东北天桥：横跨东北斜向大道（r=150 处），沿 (1,1)/√2 方向，甲板 8m 宽、高 6m */
@@ -51,6 +51,80 @@ export function bridgeHeight(s: number) {
   return H * (1 + Math.cos(Math.PI * a / RAMP)) / 2
 }
 
+
+/* ---------- 过渡带结构（第二批：B 立体停车场 / D 屋顶螺旋坡道） ---------- */
+const Q2 = Math.SQRT1_2
+/** B 东南立体停车场：沿东南斜向大道（d），向外侧（n）偏 22m；局部 u∈[-32,32] 沿 d，v∈[-12,12] 沿 n。
+ *  三层 0/4/8m；A 道 v∈[-12,-4]：地面→4m（u -27→12）；B 道 v∈[4,12]：4m→8m（u 26→-12）；中间 v∈[-4,4] 为 1 层平台。 */
+export const GARAGE = {
+  c: [at(1, 1, 150)[0] + Q2 * 22, at(1, 1, 150)[1] - Q2 * 22] as [number, number],
+  d: [Q2, Q2] as [number, number], n: [Q2, -Q2] as [number, number],
+  HU: 32, HV: 12, LANE: 4, A0: -27, A1: 12, B0: 26, B1: -12, // 余弦坡 39m/38m 升 4m → 最大 ≈9.4°
+}
+const cosRamp = (x: number, x0: number, x1: number, h0: number, h1: number) => {
+  const t = Math.min(1, Math.max(0, (x - x0) / (x1 - x0)))
+  return h0 + (h1 - h0) * (1 - Math.cos(Math.PI * t)) / 2
+}
+export const garageRampA = (u: number) => cosRamp(u, GARAGE.A0, GARAGE.A1, 0, 4)
+export const garageRampB = (u: number) => cosRamp(u, GARAGE.B0, GARAGE.B1, 4, 8)
+export const garageW = (u: number, v: number): [number, number] => [GARAGE.c[0] + GARAGE.d[0] * u + GARAGE.n[0] * v, GARAGE.c[1] + GARAGE.d[1] * u + GARAGE.n[1] * v]
+export const garageLocal = (x: number, z: number): [number, number] => {
+  const dx = x - GARAGE.c[0], dz = z - GARAGE.c[1]
+  return [dx * GARAGE.d[0] + dz * GARAGE.d[1], dx * GARAGE.n[0] + dz * GARAGE.n[1]]
+}
+/** 该点上方所有楼板顶面高度（不含地面） */
+function garageDecks(u: number, v: number): number[] {
+  const { HU, HV, LANE } = GARAGE
+  if (Math.abs(u) > HU + 0.5 || Math.abs(v) > HV + 0.5) return []
+  if (v < -LANE) return u >= GARAGE.A0 ? [garageRampA(u), 8] : [8]
+  if (v > LANE) return [garageRampB(u)]
+  return [4, 8]
+}
+
+/** D 西北屋顶螺旋坡道：中心在西北大道 r140 外侧 18m；车道中线半径 12、宽 7，升至 12m，终点接 20m 屋顶跑道。
+ *  坡度曲线：两端 10m 线性过渡（坡脚/坡顶切线水平），中段恒定 9°。 */
+const SP_K = Math.tan(9 * Math.PI / 180), SP_B = 10, SP_H = 12
+export const SPIRAL = {
+  c: [at(-1, -1, 140)[0] - Q2 * 18, at(-1, -1, 140)[1] + Q2 * 18] as [number, number],
+  R: 12, W: 7, H: SP_H, L: SP_H / SP_K + SP_B, ROOF: 20, ROOF_W: 12, LEAD: 8,
+  th0: -Math.PI / 4, sg: -1, // 起点在中心朝大道一侧，顺时针（俯视）上升，切线 = 大道外向
+}
+export const spiralH = (s: number) => {
+  const L = SPIRAL.L
+  if (s <= 0) return 0
+  if (s < SP_B) return SP_K * s * s / (2 * SP_B)
+  if (s < L - SP_B) return SP_K * (s - SP_B / 2)
+  if (s < L) return SP_H - SP_K * (L - s) ** 2 / (2 * SP_B)
+  return SP_H
+}
+/** 中线点 + 切线 + 外法线（s<0 / s>L 为直线延长） */
+export function spiralFrame(s: number) {
+  const { c, R, th0, sg, L } = SPIRAL
+  const ss = Math.min(L, Math.max(0, s)), th = th0 + sg * ss / R
+  const N: [number, number] = [Math.cos(th), Math.sin(th)], T: [number, number] = [-sg * Math.sin(th), sg * Math.cos(th)]
+  const e = s - ss
+  return { p: [c[0] + R * N[0] + T[0] * e, c[1] + R * N[1] + T[1] * e] as [number, number], T, N }
+}
+/** 螺旋段：该点上方各圈车道顶面高度 */
+function spiralDecks(x: number, z: number): number[] {
+  const { c, R, W, th0, sg, L } = SPIRAL
+  const dx = x - c[0], dz = z - c[1], r = Math.hypot(dx, dz)
+  if (Math.abs(r - R) > W / 2 + 0.5) return []
+  let a = (Math.atan2(dz, dx) - th0) * sg
+  a = ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)
+  const out: number[] = []
+  for (let s = a * R; s <= L; s += 2 * Math.PI * R) out.push(spiralH(s))
+  return out
+}
+/** 结构顶棚：(x,z) 处高于 y 的最低楼板底面（无则 Infinity）—— 相机防穿顶 */
+export function structCeil(x: number, z: number, y: number) {
+  const [u, v] = garageLocal(x, z)
+  let m = Infinity
+  for (const h of [...garageDecks(u, v), ...spiralDecks(x, z)]) if (h - 0.35 > y + 0.6) m = Math.min(m, h - 0.35)
+  return m
+}
+const spEnd = spiralFrame(SPIRAL.L), sp0 = spiralFrame(0)
+
 export const segs: Seg[] = [
   // 四条放射主街（v3：各约 190m，接 r220 外环）
   { a: [0, -PLAZA_R], b: [0, -216], w: 14, guide: 'portfolio' }, // 北 作品展示街
@@ -58,25 +132,25 @@ export const segs: Seg[] = [
   { a: [-PLAZA_R, 0], b: [-216, 0], w: 12, guide: 'hidden' }, // 西 彩蛋区
   { a: [0, PLAZA_R], b: [0, 105], w: 14, guide: 'alley' }, // 南 主路到 r105
   // 南 7m 雨夜窄巷：之字折线（两次 14m 横移）
-  { a: [0, 105], b: [0, 138], w: 7, guide: 'alley' },
-  { a: [0, 138], b: [14, 150], w: 7, guide: 'alley' },
-  { a: [14, 150], b: [14, 176], w: 7, guide: 'alley' },
-  { a: [14, 176], b: [0, 188], w: 7, guide: 'alley' },
-  { a: [0, 188], b: [0, 216], w: 7, guide: 'alley' },
+  { a: [0, 105], b: [0, 138], w: 8, guide: 'alley' },
+  { a: [0, 138], b: [14, 150], w: 8, guide: 'alley' },
+  { a: [14, 150], b: [14, 176], w: 8, guide: 'alley' },
+  { a: [14, 176], b: [0, 188], w: 8, guide: 'alley' },
+  { a: [0, 188], b: [0, 216], w: 8, guide: 'alley' },
   // 北：±40m 后巷 + z=-120/-170 横街
-  { a: [40, -64], b: [40, -214], w: 7, dim: true },
-  { a: [-40, -64], b: [-40, -214], w: 7, dim: true },
-  { a: [-40, -120], b: [40, -120], w: 7, dim: true },
-  { a: [-40, -170], b: [40, -170], w: 7, dim: true },
+  { a: [40, -64], b: [40, -214], w: 8, dim: true },
+  { a: [-40, -64], b: [-40, -214], w: 8, dim: true },
+  { a: [-40, -120], b: [40, -120], w: 8, dim: true },
+  { a: [-40, -170], b: [40, -170], w: 8, dim: true },
   // 东：z=±40 平行巷 + x=130/180 横街（夜市格网）
-  { a: [64, -40], b: [214, -40], w: 7, dim: true },
-  { a: [64, 40], b: [214, 40], w: 7, dim: true },
-  { a: [130, -40], b: [130, 40], w: 7, dim: true },
-  { a: [180, -40], b: [180, 40], w: 7, dim: true },
+  { a: [64, -40], b: [214, -40], w: 8, dim: true },
+  { a: [64, 40], b: [214, 40], w: 8, dim: true },
+  { a: [130, -40], b: [130, 40], w: 8, dim: true },
+  { a: [180, -40], b: [180, 40], w: 8, dim: true },
   // 西：z=±36 6m 巷 + x=-150 横街
-  { a: [-66, -36], b: [-215, -36], w: 6, dim: true },
-  { a: [-66, 36], b: [-215, 36], w: 6, dim: true },
-  { a: [-150, -36], b: [-150, 36], w: 6, dim: true },
+  { a: [-66, -36], b: [-215, -36], w: 8, dim: true },
+  { a: [-66, 36], b: [-215, 36], w: 8, dim: true },
+  { a: [-150, -36], b: [-150, 36], w: 8, dim: true },
   // 四条斜向大道 10m（西南段在隧道处断开，由隧道结构接上）
   diag(1, -1), diag(-1, -1), diag(1, 1),
   diag(-1, 1, PLAZA_R, TUNNEL.R0), diag(-1, 1, TUNNEL_R1, 222),
@@ -85,6 +159,14 @@ export const segs: Seg[] = [
   { a: bridgeEnd(-1), b: bridgeEnd(1), w: 12, virtual: true },
   { a: bridgeEnd(1), b: [bridgeEnd(1)[0], -40], w: 8, dim: true },
   { a: bridgeEnd(-1), b: [40, bridgeEnd(-1)[1]], w: 8, dim: true },
+  // B 停车场：建筑避让 + 斜向大道→A 道入口的引道
+  { a: garageW(-GARAGE.HU - 2, 0), b: garageW(GARAGE.HU + 2, 0), w: GARAGE.HV * 2 + 6, virtual: true },
+  { a: garageW(-50, -12), b: garageW(-GARAGE.HU, -8), w: 14, virtual: true },
+  { a: garageW(-48, -22), b: garageW(-GARAGE.HU - 1, -8), w: 8, dim: true },
+  // D 螺旋坡道：建筑避让（圆盘 + 屋顶跑道）+ 引道
+  { a: SPIRAL.c, b: SPIRAL.c, w: (SPIRAL.R + SPIRAL.W / 2) * 2 + 6, virtual: true },
+  { a: spEnd.p, b: [spEnd.p[0] + spEnd.T[0] * (SPIRAL.ROOF + 2), spEnd.p[1] + spEnd.T[1] * (SPIRAL.ROOF + 2)], w: SPIRAL.ROOF_W + 4, virtual: true },
+  { a: [sp0.p[0] - sp0.T[0] * 30 + sp0.N[0] * 6, sp0.p[1] - sp0.T[1] * 30 + sp0.N[1] * 6], b: [sp0.p[0] - sp0.T[0] * SPIRAL.LEAD, sp0.p[1] - sp0.T[1] * SPIRAL.LEAD], w: 8, dim: true },
 ]
 
 /** 彩蛋占位（第一批：天桥 E1/E2、隧道 E5/E6、窄巷 E9） */
@@ -111,7 +193,7 @@ export const signs: Array<{ p: [number, number]; rot: number; text: string; colo
 export function distSeg(x: number, z: number, s: Seg) {
   const [ax, az] = s.a, [bx, bz] = s.b
   const dx = bx - ax, dz = bz - az
-  const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz)))
+  const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)))
   return Math.hypot(x - (ax + t * dx), z - (az + t * dz))
 }
 

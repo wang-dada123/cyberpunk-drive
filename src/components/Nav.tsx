@@ -21,6 +21,7 @@ export function loadFonts() {
   return fontsP
 }
 const scale = (hex: string, k: number) => { const c = new THREE.Color(hex); return `rgb(${(c.r * k * 255) | 0},${(c.g * k * 255) | 0},${(c.b * k * 255) | 0})` }
+const scaleA = (hex: string, k: number, a: number) => { const c = new THREE.Color(hex); return `rgba(${(c.r * k * 255) | 0},${(c.g * k * 255) | 0},${(c.b * k * 255) | 0},${a})` }
 function arrow(g: CanvasRenderingContext2D, x: number, y: number, dir: SignLine['arrow'], col: string) {
   g.save(); g.translate(x, y); g.rotate(dir === 'up' ? 0 : dir === 'right' ? Math.PI / 2 : -Math.PI / 2)
   g.fillStyle = col; g.beginPath(); g.moveTo(0, -22); g.lineTo(18, 0); g.lineTo(7, 0); g.lineTo(7, 20); g.lineTo(-7, 20); g.lineTo(-7, 0); g.lineTo(-18, 0); g.closePath(); g.fill(); g.restore()
@@ -39,8 +40,8 @@ function buildAtlas() {
     signCells.push(sp.lines.map((l) => {
       const c = cell(), col = NAV[l.id].color
       const x = c.x + 4, y = c.y + 4, w = CW - 8, h = CH - 8
-      g.fillStyle = 'rgba(12,20,30,0.85)'; g.beginPath(); g.roundRect(x, y, w, h, 3); g.fill()
-      g.strokeStyle = 'rgba(232,244,255,0.3)'; g.lineWidth = 2; g.stroke()
+      g.fillStyle = scaleA('#0E1824', 1 / K, 0.85); g.beginPath(); g.roundRect(x, y, w, h, 4); g.fill() // 圆角 2px@256 → 4px 图集
+      g.strokeStyle = scaleA('#E8F4FF', 1 / K, 0.3); g.lineWidth = 2; g.stroke()
       g.fillStyle = col; g.fillRect(x, y, 12, h) // 6px@256 → 12px 图集
       arrow(g, x + 52, y + h / 2, l.arrow, scale(col, TXT))
       g.fillStyle = scale('#E8F4FF', TXT); g.font = `500 46px ${FONT_ZH}`; g.textBaseline = 'middle'; g.textAlign = 'left'
