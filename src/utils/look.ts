@@ -1,4 +1,9 @@
 import * as THREE from 'three'
+import { onTier, tierState } from './tier'
+
+/** high = 1，low = 0。立面高光和水洼镜面共用；low 时镜面强度约为 high 的一半。 */
+export const lookTier = { value: tierState.tier === 'low' ? 0 : 1 }
+onTier((t) => { lookTier.value = t === 'low' ? 0 : 1 })
 
 /** v3.3 美术定稿参数（易调常量集中于此） */
 export const LOOK = {
@@ -14,14 +19,18 @@ export const LOOK = {
   puddle: {
     thrDark: 0.69, // 暗处/路中阈值（噪声高于阈值才是水；越高越少）→ 约 10%
     thrLit: 0.65, // 路边 + 灯下阈值 → 约 15%；综合覆盖率 ≈12%
-    darken: 0.5, // 水面底色压暗，形成“暗镜面”轮廓
-    rough: 0.02, roughEdge: 0.3,
-    k: 0.55, // 水洼区伪反射总强度（0.5–0.6）
-    envK: 0.9, streakK: 0.75, streakStretch: 1.75,
-    streakHz: 0.48, // 沿视线拖影频率；上一版 0.24，长度减半
-    phaseHz: 0.8, // 斜向相位，上一版 0.4，避免斜向把拖影拉长
-    ice: '#4FC3F7', iceK: 0.09, // 只作为 #4FC3F7 亮度底，不另加色相
-    cap: 0.3, // 单通道上限，防白斑
+    darken: 0.38, // 水面底色再压一点，镜面才从沥青里分离出来
+    rough: 0.016, roughEdge: 0.22,
+    metal: 0.72, // 水洼金属度；没有新 mesh，只让已有高光更贴地
+    k: 1.15, // 假反射总强度
+    envK: 2.35, streakK: 0.18, streakStretch: 2.6,
+    streakHz: 0.16, // 只剩轻微涟漪，不再用高频正弦当倒影
+    phaseHz: 0.22,
+    ice: '#4FC3F7', iceK: 0.05, // 只作为 #4FC3F7 亮度底，不另加色相
+    cap: 1.05, // 单通道上限。低于会改 Bloom 阈值的需要，亮条靠自发光而不是改 Bloom
+    mip: 1.15, // 环境图 mip 偏移；上一版 3.5，倒影糊成一片
+    lightK: 0.9, // 车灯 / 路灯镜面高光的额外倍率（主强度已在 k 里）
+    lookLo: 0.5, // uLook = 0 时镜面强度比例
   },
 }
 

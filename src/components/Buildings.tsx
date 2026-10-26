@@ -1,8 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { useLayoutEffect, useMemo, useRef } from 'react'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { facadeEnvPMREM } from '../utils/look'
-import { onTier, tierState } from '../utils/tier'
+import { facadeEnvPMREM, lookTier } from '../utils/look'
 
 /**
  * 立面 v4。分带公式、竖梃 5cm、塔身腰线数量都不动。
@@ -97,8 +96,7 @@ export function measureFacades(list: Prism[]) {
 }
 
 export const winScale = { value: 1 } // 核显：亮窗 ×0.7
-/** high = 1，low = 0。明暗差两边都有，高光强度随档走。 */
-export const lookTier = { value: tierState.tier === 'low' ? 0 : 1 }
+export { lookTier }
 
 export function makeBuildingMat() {
   const m = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.5, metalness: 0.5, envMapIntensity: 1 })
@@ -229,11 +227,6 @@ export function Buildings({ list }: { list: Prism[] }) {
     m.envMap = facadeEnvPMREM(gl)
     return m
   }, [gl])
-  useEffect(() => {
-    const apply = (t: typeof tierState.tier) => { lookTier.value = t === 'low' ? 0 : 1 }
-    apply(tierState.tier)
-    return onTier(apply)
-  }, [])
   return <mesh geometry={geo} material={mat} userData={{ dynamic: true }} frustumCulled={false} />
 }
 

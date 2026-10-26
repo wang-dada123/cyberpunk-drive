@@ -66,7 +66,7 @@ export function GroundBake() { const gl = useThree((s) => s.gl); useMemo(() => b
 /**
  * 地面程序化材质（美术总监定稿参数）：
  * - 沥青：深灰 + 噪声粗糙度 0.6–0.8 + 不规则拼缝/细裂缝；
- * - 积水：覆盖约 15–20%，直径 0.5–4m，粗糙度 0.05，边缘渐变；路边/灯下多、路中少；假反射＝低粗糙度 + 冷色涂抹（不用 Reflector）；
+ * - 积水：覆盖约 15–20%，直径 0.5–4m，边缘渐变；路边/灯下多、路中少。假反射仍在这块材质里：水平面镜向采样预烘霓虹，加上车灯/路灯在地面上的镜面高光。色相只留冰蓝/冷白。不用 Reflector。
  * - 广场：2m 石材分格 #141C26 + 轻微色差，每 4 块一条冰蓝细线槽（4cm），从塔脚放射。
  * 全部在已有 mesh 的着色器里完成：不增加 draw call / 三角面。
  */
@@ -78,7 +78,7 @@ float fbm(vec2 p){ return 0.5 * vn(p) + 0.3 * vn(p * 2.03 + 7.1) + 0.2 * vn(p * 
 `
 /** 6 盏 pointLight 的 XZ（灯下多积水） */
 import { FAKE_LAMP_GLSL, REAL_LIGHTS } from '../utils/fakeLights'
-import { LOOK, neonEnvTex, carSpotUniform } from '../utils/look'
+import { LOOK, neonEnvTex, carSpotUniform, lookTier } from '../utils/look'
 const PD = LOOK.puddle, SP = LOOK.car.spot
 const g3 = (c: string) => { const k = new THREE.Color(c); return `vec3(${k.r.toFixed(4)},${k.g.toFixed(4)},${k.b.toFixed(4)})` }
 const ICE = g3('#4FC3F7'), WHITE = g3('#E8F4FF')
@@ -88,7 +88,7 @@ float carSpot(vec2 w){ vec2 d = w - uCar.xy; float a = dot(d, uCar.zw); float b 
   float r2 = pow((a - ${((SP.near+SP.far)/2).toFixed(2)}) / ${((SP.far-SP.near)/2).toFixed(2)}, 2.0) + pow(b / ${(SP.width/2).toFixed(2)}, 2.0);
   float s = 1.0 - smoothstep(0.0, 1.0, r2); return ${SP.k.toFixed(3)} * s * s; }`
 const SPOT_EMIT = `totalEmissiveRadiance += ${g3(SP.color)} * carSpot(vWp.xz) * (${SP.gain.toFixed(3)} + ${(SP.pudGain-SP.gain).toFixed(3)} * gPudL);`
-const LAMP_EMIT = REAL_LIGHTS ? '' : 'totalEmissiveRadiance += (diffuseColor.rgb * RECIPROCAL_PI + 0.05 * gPudL) * gLamp; // 假光斑'
+const LAMP_EMIT = REAL_LIGHTS ? '' : 'totalEmissiveRadiance += diffuseColor.rgb * RECIPROCAL_PI * gLamp; // 假光斑。水洼已把 gLamp 乘掉，避免彩蛋区薄荷绿串进倒影'
 export const LAMPS_XZ: [number, number][] = [[0, 14], [0, -50], [60, 0], [-60, 0], [0, 112], [0, 140]] // 与 Scene.tsx 的 pointLight 一致
 
 type Edge = { mode: 0 | 1; R?: number; W?: number }
@@ -100,6 +100,7 @@ export function makeAsphalt(color: string, edge: Edge) {
     sh.uniforms.uDetail = { value: groundRT.texture }
     sh.uniforms.uEnv = { value: neonEnvTex }
     sh.uniforms.uCar = carSpotUniform
+    sh.uniforms.uLook = lookTier
     sh.uniforms.uRing = { value: new THREE.Vector2(edge.R ?? 0, (edge.W ?? 1) / 2) }
     sh.uniforms.uLamps = { value: LAMPS_XZ.slice(0, 6).concat(Array(Math.max(0, 6 - LAMPS_XZ.length)).fill([9999, 9999])).map(([x, z]) => new THREE.Vector2(x, z)) }
     sh.vertexShader = sh.vertexShader
@@ -108,11 +109,29 @@ export function makeAsphalt(color: string, edge: Edge) {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 varying vec3 vWp; varying vec2 vUv0; uniform float uMode; uniform vec2 uRing; uniform vec2 uLamps[6];
-uniform sampler2D uDetail; uniform sampler2D uEnv; float gPud; float gPudR; float gLit; vec4 gD; vec3 gLamp; float gPudL;
+uniform sampler2D uDetail; uniform sampler2D uEnv; uniform float uLook; float gPud; float gPudR; float gLit; vec4 gD; vec3 gLamp; float gPudL;
 vec3 satCap(vec3 c, float cap){ float l = dot(c, vec3(0.2126, 0.7152, 0.0722)); float mx = max(c.r, max(c.g, c.b)); float mn = min(c.r, min(c.g, c.b));
   float s = (mx - mn) / max(mx, 1e-4); return mix(vec3(l), c, min(1.0, cap / max(s, 1e-4))); }
+float pudLum(vec3 c){ return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 ${FAKE_LAMP_GLSL}
-${CAR_SPOT_GLSL}`)
+${CAR_SPOT_GLSL}
+vec2 mirrorHit(vec2 lightXZ, float lightY){
+  float camY = max(cameraPosition.y - vWp.y, 0.2);
+  float h = max(lightY - vWp.y, 0.2);
+  float t = camY / (camY + h);
+  return mix(cameraPosition.xz, lightXZ, t);
+}
+float streak(vec2 hit, vec2 rt, vec2 vh, float sigA, float sigB){
+  vec2 d = vWp.xz - hit;
+  float a = dot(d, vh);
+  float b = dot(d, rt);
+  return exp(-a * a / (sigA * sigA) - b * b / (sigB * sigB));
+}
+float lampStreak(vec2 rt, vec2 vh){
+  float e = 0.0;
+  for (int i = 0; i < 6; i++) e += streak(mirrorHit(FL_P[i].xz, FL_P[i].y), rt, vh, 7.0, 0.72) * pudLum(FL_C[i]);
+  return e;
+}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 {
   vec2 w = vWp.xz;
@@ -129,39 +148,60 @@ ${CAR_SPOT_GLSL}`)
   float mPerPx = max(length(vec2(length(vec2(dFdx(w.x), dFdy(w.x))), length(vec2(dFdx(w.y), dFdy(w.y))))), 1e-4);
   float halfW = 0.15 * dp / mPerPx; // 边缘柔化 0.3m（值域宽度 / 坡度）
   gPud = smoothstep(-halfW, halfW, dP);
-  gPudR = smoothstep(-halfW * 1.35, halfW * 0.35, dP);
+  // 车头前、车尾后用同一张噪声再补一块湿痕，头灯/尾灯才有地方落成倒影
+  vec2 ahead = uCar.xy + uCar.zw * 2.6;
+  vec2 behind = uCar.xy - uCar.zw * 1.8;
+  gPud = max(gPud, smoothstep(3.6, 0.7, length(w - ahead)) * smoothstep(0.32, 0.55, gD.r));
+  gPud = max(gPud, smoothstep(2.8, 0.5, length(w - behind)) * smoothstep(0.38, 0.6, gD.r));
+  gPudR = max(smoothstep(-halfW * 1.35, halfW * 0.35, dP), gPud);
   diffuseColor.rgb *= gD.g * 1.25;
   diffuseColor.rgb *= mix(1.0, ${PD.darken.toFixed(3)}, gPud);
   gPudL = gPud;
+  gLamp *= 1.0 - gPud;
 }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
 roughnessFactor = mix(0.6 + 0.2 * gD.b, mix(${PD.roughEdge.toFixed(3)}, ${PD.rough.toFixed(3)}, gPud), gPudR);`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
-metalnessFactor = mix(0.25, 0.35, gPud);`)
+metalnessFactor = mix(0.25, ${PD.metal.toFixed(3)}, gPud);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
 if (gPud > 0.001) {
-  // 假倒影：按视线反射采样预烘霓虹环境图 + 沿视线纵向拉伸的街区色光条（不过 Bloom 阈值）
+  // 水平湿地面：反射向量 R=(−Vx, Vy, −Vz)。只取环境图亮度，再涂回冰蓝/冷白。
   vec3 V = normalize(cameraPosition - vWp);
   vec3 R = vec3(-V.x, V.y, -V.z);
   vec2 euv = vec2(atan(R.z, R.x) * RECIPROCAL_PI2 + 0.5, asin(clamp(R.y, -1.0, 1.0)) * RECIPROCAL_PI + 0.5);
-  vec3 env = texture2D(uEnv, euv, 3.5).rgb; // mip 偏移=模糊倒影；只取亮度，色相锁在两种规格色
   vec3 ice = satCap(${ICE}, 0.5);
   vec3 wht = satCap(${WHITE}, 0.5);
-  vec3 hue = mix(ice, wht, clamp(gLit, 0.0, 1.0));
-  float envL = dot(env, vec3(0.2126, 0.7152, 0.0722));
-  float fr = 0.3 + 0.4 * pow(1.0 - clamp(V.y, 0.0, 1.0), 3.0); // 菲涅尔：掠射更亮
-  vec2 rt = normalize(vec2(viewMatrix[0][0], viewMatrix[2][0]) + 1e-4); vec2 vh = vec2(-rt.y, rt.x);
-  float sx = dot(vWp.xz, rt) * 3.0;
-  float along = dot(vWp.xz, vh);
-  float band = 0.5 + 0.5 * sin(sx * 2.4 + 1.8 * sin(sx * 0.7));
-  band = band * band * (0.55 + 0.45 * sin(along * ${PD.streakHz.toFixed(3)} + sx * ${PD.phaseHz.toFixed(3)}));
-  vec3 refl = hue * ((envL * ${PD.envK.toFixed(3)} + ${PD.iceK.toFixed(3)}) + ${PD.streakK.toFixed(3)} * (0.2 + 2.4 * band)) * ${PD.k.toFixed(3)} * fr;
-  totalEmissiveRadiance += gPud * min(refl, vec3(${PD.cap.toFixed(3)}));
+  float fr = 0.55 + 1.15 * pow(1.0 - clamp(V.y, 0.0, 1.0), 2.0);
+  vec2 rt = normalize(vec2(viewMatrix[0][0], viewMatrix[2][0]) + 1e-4);
+  vec2 vh = vec2(-rt.y, rt.x);
+  float mip = ${PD.mip.toFixed(2)};
+  float envL = pudLum(texture2D(uEnv, euv, mip).rgb);
+  if (uLook > 0.5) {
+    envL += pudLum(texture2D(uEnv, euv + vec2(0.0, 0.022), mip).rgb);
+    envL += pudLum(texture2D(uEnv, euv + vec2(0.0, 0.048), mip).rgb);
+    envL += pudLum(texture2D(uEnv, euv - vec2(0.0, 0.014), mip).rgb);
+    envL *= 0.25;
+  }
+  float horL = pudLum(texture2D(uEnv, vec2(euv.x, 0.54), mip + 0.35).rgb);
+  envL = max(envL, horL * fr);
+  float ripple = 1.0 - ${PD.streakK.toFixed(3)} + ${PD.streakK.toFixed(3)} * sin(dot(vWp.xz, vh) * ${PD.streakHz.toFixed(3)} + dot(vWp.xz, rt) * ${PD.phaseHz.toFixed(3)});
+  vec2 headXZ = uCar.xy + uCar.zw * 1.05;
+  vec2 tailXZ = uCar.xy - uCar.zw * 1.05;
+  float hs = streak(mirrorHit(headXZ, 0.95), rt, vh, 4.6, 0.4);
+  float ts = streak(mirrorHit(tailXZ, 1.02), rt, vh, 3.8, 0.48);
+  vec3 refl = ice * ${PD.iceK.toFixed(3)};
+  refl += mix(ice, wht, clamp(max(envL, gLit), 0.0, 1.0)) * envL * ${PD.envK.toFixed(3)};
+  refl += (wht * hs * 1.5 + ice * ts * 0.95 + mix(ice, wht, 0.35) * lampStreak(rt, vh) * 0.8) * ${PD.lightK.toFixed(3)};
+  refl *= gPud * ${PD.k.toFixed(3)} * fr * ripple;
+  refl = satCap(refl, 0.5);
+  refl.g = min(refl.g, max(refl.r, refl.b));
+  float lookK = mix(${PD.lookLo.toFixed(3)}, 1.0, clamp(uLook, 0.0, 1.0));
+  totalEmissiveRadiance += min(refl, vec3(${PD.cap.toFixed(3)})) * lookK;
 }
 ${SPOT_EMIT}
 ${LAMP_EMIT}`)
   }
-  m.customProgramCacheKey = () => 'asphaltPuddleV1'
+  m.customProgramCacheKey = () => 'asphaltPuddleV2'
   return m
 }
 
