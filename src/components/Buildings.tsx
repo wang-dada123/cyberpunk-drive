@@ -1,13 +1,16 @@
-import { useLayoutEffect, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { facadeEnvPMREM } from '../utils/look'
+import { onTier, tierState } from '../utils/tier'
 
 /**
  * 立面 v4。分带公式、竖梃 5cm、塔身腰线数量都不动。
  * 上一版三种墙贴在一起：envMap 是等距圆柱，IBL 只认 PMREM，反射项恒为 0，
  * 墙只剩三块接近的暗反照率。这一版立面单独烘一张没有窗格点的 CubeUV。
  * 混凝土更哑更暗；金属 env 拉高、缝仍是 2cm；玻璃改低金属度，靠锐高光/倒影分开。
+ * v5：再拉开明度。混凝土压得更暗更哑，金属加一层沿现有方向光的高光，玻璃按视角加菲涅尔。
+ * uLook：high = 1，low = 0。low 仍保留明暗差和一圈弱菲涅尔，只是高光比 high 收一点，避免核显糊成白板。
  * 竖窗：uv 仍是立面米制，没有合批（userData.dynamic）。上一版每一跨都挖暗槽，
  * LOD1 再把一组填成横条，远处就糊成点阵。现在只画点亮的 1.3×2.08 竖窗，
  * 3–5 扇成列，旁边留出同样宽的实墙；>60m 仍是这些竖窗，只按像素加粗，不再合成横条。
@@ -94,25 +97,29 @@ export function measureFacades(list: Prism[]) {
 }
 
 export const winScale = { value: 1 } // 核显：亮窗 ×0.7
+/** high = 1，low = 0。明暗差两边都有，高光强度随档走。 */
+export const lookTier = { value: tierState.tier === 'low' ? 0 : 1 }
 
 export function makeBuildingMat() {
   const m = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.5, metalness: 0.5, envMapIntensity: 1 })
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uWinK = winScale
+    sh.uniforms.uLook = lookTier
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
 attribute float aMat; attribute vec3 aWin; attribute float aSeed; attribute float aLen; attribute float aH;
 varying float vMat; varying vec3 vWin; varying float vSeed; varying vec2 vF; varying float vRoof;
-varying vec3 vWp; varying float vLen; varying float vH;`)
+varying vec3 vWp; varying vec3 vN; varying float vLen; varying float vH;`)
       .replace('#include <uv_vertex>', `#include <uv_vertex>
 vMat = aMat; vWin = aWin; vSeed = aSeed; vF = uv; vRoof = step(0.5, normal.y);
 vLen = aLen; vH = aH;
-vWp = (modelMatrix * vec4(position, 1.0)).xyz;`)
+vWp = (modelMatrix * vec4(position, 1.0)).xyz;
+vN = normalize(mat3(modelMatrix) * normal);`)
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-uniform float uWinK;
+uniform float uWinK; uniform float uLook;
 varying float vMat; varying vec3 vWin; varying float vSeed; varying vec2 vF; varying float vRoof;
-varying vec3 vWp; varying float vLen; varying float vH;
+varying vec3 vWp; varying vec3 vN; varying float vLen; varying float vH;
 float bh(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float gRough; float gMetal; float gEnvK; float gIbl; vec3 gWinE;`)
       .replace('#include <color_fragment>', `#include <color_fragment>
@@ -133,33 +140,43 @@ float gRough; float gMetal; float gEnvK; float gIbl; vec3 gWinE;`)
 
   float nz = bh(floor(f * 2.0));
   float wet = 1.0 - smoothstep(1.42, 1.58, f.y);
-  vec3 concC = ${C_CONC} * (0.42 + 0.06 * nz);
-  concC *= mix(1.0, 0.72, wet);
-  float cR = mix(0.97, 0.40, wet);
-  float cE = mix(0.05, 0.40, wet);
+  vec3 concC = ${C_CONC} * (0.12 + 0.03 * nz);
+  concC *= mix(1.0, 0.70, wet);
+  float cR = mix(1.0, 0.42, wet);
+  float cE = mix(0.02, 0.22, wet);
 
   float pd = abs(fract(f.x / 1.5 + 0.5) - 0.5) * 1.5;
   float seam = 1.0 - smoothstep(0.01 - fwX, 0.01 + fwX, pd);
   float pan = bh(vec2(floor(f.x / 1.5 + 0.001), vSeed * 3.0 + 1.0));
   float grain = 0.5 + 0.5 * sin(f.y * 12.0 + floor(f.x / 1.5) * 1.7);
-  vec3 metC = ${C_METAL} * (1.55 + 0.55 * pan) * (0.94 + 0.06 * grain);
-  metC = mix(metC, metC * 0.12, seam);
-  float metR = mix(0.30, 0.90, seam);
-  float metE = mix(8.0, 0.20, seam);
+  vec3 metC = ${C_METAL} * (2.15 + 0.65 * pan) * (0.92 + 0.08 * grain);
+  metC = mix(metC, metC * 0.10, seam);
+  float metR = mix(0.24, 0.92, seam);
+  float metE = mix(mix(9.0, 14.0, uLook), 0.12, seam);
 
   float gPick = fract(vSeed * 0.173 + vMat * 0.31);
   float md = abs(fract(f.x / 1.5 + 0.5) - 0.5) * 1.5;
   float mull = 1.0 - smoothstep(0.025 - fwX, 0.025 + fwX, md);
-  vec3 glC = mix(${C_GLASS}, ${C_MULL}, mull);
-  float glR = mix(0.045, 0.72, mull);
-  float glM = mix(0.02, 0.55, mull);
-  float glE = mix(mix(14.0, 18.0, gPick), 0.35, mull);
+  vec3 glC = mix(${C_GLASS} * 0.82, ${C_MULL}, mull);
+  float glR = mix(0.028, 0.74, mull);
+  float glM = mix(0.0, 0.50, mull);
+  float glE = mix(mix(18.0, 28.0, gPick) * mix(0.82, 1.15, uLook), 0.28, mull);
+
+  vec3 nrm = normalize(vN);
+  float ndv = clamp(dot(nrm, normalize(cameraPosition - vWp)), 0.0, 1.0);
+  float fres = pow(1.0 - ndv, 3.0);
+  vec3 L = normalize(vec3(0.0, 25.0, -60.0));
+  vec3 H = normalize(L + normalize(cameraPosition - vWp));
+  float spec = pow(clamp(dot(nrm, H), 0.0, 1.0), mix(16.0, 28.0, uLook));
 
   vec3 base = concC * wC + metC * wM + glC * wG;
+  base += vec3(0.45, 0.68, 0.95) * spec * mix(0.28, 0.62, uLook) * wM * (1.0 - seam);
+  base += vec3(0.28, 0.58, 0.95) * fres * mix(0.42, 0.85, uLook) * wG * (1.0 - mull);
   gRough = cR * wC + metR * wM + glR * wG;
-  gMetal = 0.0 * wC + 0.90 * wM + glM * wG;
+  gMetal = 0.0 * wC + 0.92 * wM + glM * wG;
   gEnvK = cE * wC + metE * wM + glE * wG;
-  gIbl = mix(0.04, 0.45, wet) * wC;
+  gEnvK *= mix(1.0, mix(1.45, 2.6, uLook), wG * fres);
+  gIbl = mix(0.02, 0.30, wet) * wC;
   gWinE = vec3(0.0);
 
   float bay = 1.5, winW = 1.3, winH = 2.08, floorH = 3.2, sill = 0.50;
@@ -200,7 +217,7 @@ float gRough; float gMetal; float gEnvK; float gIbl; vec3 gWinE;`)
 radiance *= gEnvK;
 iblIrradiance *= gIbl;`)
   }
-  m.customProgramCacheKey = () => 'facadeV4'
+  m.customProgramCacheKey = () => 'facadeV6'
   return m
 }
 
@@ -212,6 +229,11 @@ export function Buildings({ list }: { list: Prism[] }) {
     m.envMap = facadeEnvPMREM(gl)
     return m
   }, [gl])
+  useEffect(() => {
+    const apply = (t: typeof tierState.tier) => { lookTier.value = t === 'low' ? 0 : 1 }
+    apply(tierState.tier)
+    return onTier(apply)
+  }, [])
   return <mesh geometry={geo} material={mat} userData={{ dynamic: true }} frustumCulled={false} />
 }
 

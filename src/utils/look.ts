@@ -67,10 +67,10 @@ function drawFacadeEnv() {
   sky.addColorStop(0.52, '#0c1828'); sky.addColorStop(1, '#010204')
   g.fillStyle = sky; g.fillRect(0, 0, W, H)
   const band = (y: number, h: number, col: string, a: number) => { g.globalAlpha = a; g.fillStyle = col; g.fillRect(0, y, W, h); g.globalAlpha = 1 }
-  band(H * 0.455, 4, '#4FC3F7', 1)
-  band(H * 0.47, 12, '#c5ecff', 0.95)
-  band(H * 0.505, 4, '#E8F4FF', 0.92)
-  band(H * 0.32, 3, '#4FC3F7', 0.5)
+  band(H * 0.44, 6, '#4FC3F7', 1)
+  band(H * 0.465, 16, '#d7f3ff', 1)
+  band(H * 0.51, 5, '#E8F4FF', 0.95)
+  band(H * 0.30, 4, '#7fd4ff', 0.65)
   for (const [x, y, col] of [[78, 116, '#e7f7ff'], [236, 104, '#8ad8ff'], [404, 122, '#E8F4FF']] as const) {
     const rad = g.createRadialGradient(x, y, 0, x, y, 78)
     rad.addColorStop(0, col); rad.addColorStop(1, 'rgba(0,0,0,0)')
