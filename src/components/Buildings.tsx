@@ -1,15 +1,16 @@
 import { useLayoutEffect, useMemo, useRef } from 'react'
+import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { neonEnvTex } from '../utils/look'
+import { facadeEnvPMREM } from '../utils/look'
 
 /**
- * 立面 v3（building-facade-refine-v1）：每栋按高度切三段，禁止整栋平涂。
- * 混凝土基座 max(4m, 40% 楼高) #0E1824 r0.90 m0.05，其中底 1.5m 湿痕 r0.35；
- * 中段拉丝金属 #141E2A r0.38 m0.85 env 1.2，竖向面板缝 2cm / 1.5m 一档；
- * 玻璃冠约 20% 楼高（至少 3m）+ 转角 1.5m #0A1420 r0.08 m0.9 env 2.0–2.4，竖梃 #1C2836 每 1.5m。
- * 竖窗 1.3×2.08m，3–5 扇成组，组间至少 1 扇暗窗，亮窗约 30%。
- * LOD1（>60m）亮窗组合并成一块；LOD2（>140m）才收成亮窗盒。
- * uv = 立面米制（u 本面局部，v 高度）。偏差：玻璃竖梃宽 5cm（规格只给间距与色）；湿痕 env 0.85 让 r0.35 在现有夜景里能反光。
+ * 立面 v4。分带公式、竖梃 5cm、塔身腰线数量都不动。
+ * 上一版三种墙贴在一起：envMap 是等距圆柱，IBL 只认 PMREM，反射项恒为 0，
+ * 墙只剩三块接近的暗反照率。这一版立面单独烘一张没有窗格点的 CubeUV。
+ * 混凝土更哑更暗；金属 env 拉高、缝仍是 2cm；玻璃改低金属度，靠锐高光/倒影分开。
+ * 竖窗：uv 仍是立面米制，没有合批（userData.dynamic）。上一版每一跨都挖暗槽，
+ * LOD1 再把一组填成横条，远处就糊成点阵。现在只画点亮的 1.3×2.08 竖窗，
+ * 3–5 扇成列，旁边留出同样宽的实墙；>60m 仍是这些竖窗，只按像素加粗，不再合成横条。
  */
 const lin = (hex: string) => {
   const c = new THREE.Color(hex)
@@ -95,7 +96,7 @@ export function measureFacades(list: Prism[]) {
 export const winScale = { value: 1 } // 核显：亮窗 ×0.7
 
 export function makeBuildingMat() {
-  const m = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.5, metalness: 0.5, envMap: neonEnvTex, envMapIntensity: 1 })
+  const m = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.5, metalness: 0.5, envMapIntensity: 1 })
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uWinK = winScale
     sh.vertexShader = sh.vertexShader
@@ -113,7 +114,7 @@ uniform float uWinK;
 varying float vMat; varying vec3 vWin; varying float vSeed; varying vec2 vF; varying float vRoof;
 varying vec3 vWp; varying float vLen; varying float vH;
 float bh(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
-float gRough; float gMetal; float gEnvK; vec3 gWinE;`)
+float gRough; float gMetal; float gEnvK; float gIbl; vec3 gWinE;`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 {
   vec2 f = vF;
@@ -130,33 +131,35 @@ float gRough; float gMetal; float gEnvK; vec3 gWinE;`)
   float wG = (1.0 - wC) * gMix;
   float wM = (1.0 - wC) * (1.0 - gMix);
 
-  float nz = bh(floor(f * 6.0));
+  float nz = bh(floor(f * 2.0));
   float wet = 1.0 - smoothstep(1.42, 1.58, f.y);
-  vec3 concC = ${C_CONC} * (0.90 + 0.16 * nz);
-  concC *= mix(1.0, 0.75, wet);
-  float cR = mix(0.90, 0.35, wet);
+  vec3 concC = ${C_CONC} * (0.42 + 0.06 * nz);
+  concC *= mix(1.0, 0.72, wet);
+  float cR = mix(0.97, 0.40, wet);
+  float cE = mix(0.05, 0.40, wet);
 
   float pd = abs(fract(f.x / 1.5 + 0.5) - 0.5) * 1.5;
   float seam = 1.0 - smoothstep(0.01 - fwX, 0.01 + fwX, pd);
   float pan = bh(vec2(floor(f.x / 1.5 + 0.001), vSeed * 3.0 + 1.0));
-  float grain = 0.5 + 0.5 * sin(f.y * 80.0 + floor(f.x / 1.5) * 2.1);
-  vec3 metC = ${C_METAL} * (0.76 + 0.32 * pan) * (0.94 + 0.06 * grain);
+  float grain = 0.5 + 0.5 * sin(f.y * 12.0 + floor(f.x / 1.5) * 1.7);
+  vec3 metC = ${C_METAL} * (1.55 + 0.55 * pan) * (0.94 + 0.06 * grain);
   metC = mix(metC, metC * 0.12, seam);
-  float metR = mix(0.38, 0.88, seam);
-  float metE = mix(1.2, 0.12, seam);
+  float metR = mix(0.30, 0.90, seam);
+  float metE = mix(8.0, 0.20, seam);
 
-  float gEnv = mix(2.0, 2.4, fract(vSeed * 0.173 + vMat * 0.31));
+  float gPick = fract(vSeed * 0.173 + vMat * 0.31);
   float md = abs(fract(f.x / 1.5 + 0.5) - 0.5) * 1.5;
   float mull = 1.0 - smoothstep(0.025 - fwX, 0.025 + fwX, md);
   vec3 glC = mix(${C_GLASS}, ${C_MULL}, mull);
-  float glR = mix(0.08, 0.62, mull);
-  float glM = mix(0.90, 0.40, mull);
-  float glE = mix(gEnv, 0.30, mull);
+  float glR = mix(0.045, 0.72, mull);
+  float glM = mix(0.02, 0.55, mull);
+  float glE = mix(mix(14.0, 18.0, gPick), 0.35, mull);
 
   vec3 base = concC * wC + metC * wM + glC * wG;
   gRough = cR * wC + metR * wM + glR * wG;
-  gMetal = 0.05 * wC + 0.85 * wM + glM * wG;
-  gEnvK = mix(0.20, 0.85, wet) * wC + metE * wM + glE * wG;
+  gMetal = 0.0 * wC + 0.90 * wM + glM * wG;
+  gEnvK = cE * wC + metE * wM + glE * wG;
+  gIbl = mix(0.04, 0.45, wet) * wC;
   gWinE = vec3(0.0);
 
   float bay = 1.5, winW = 1.3, winH = 2.08, floorH = 3.2, sill = 0.50;
@@ -164,59 +167,51 @@ float gRough; float gMetal; float gEnvK; vec3 gWinE;`)
   float fl = floor(yRel / floorH);
   float ly = yRel - fl * floorH;
   float inY = min(ly - sill, sill + winH - ly);
-  float cell = floor(f.x / bay);
-  float lx = f.x - cell * bay;
+  float xw = f.x + bh(vec2(vSeed, 9.1)) * 12.0;
+  float cell = floor(xw / bay);
+  float lx = xw - cell * bay;
   float inX = min(lx - (bay - winW) * 0.5, (bay + winW) * 0.5 - lx);
-  float gsz = 3.0 + floor(bh(vec2(fl + 0.17, vSeed * 1.7)) * 2.999);
-  float period = gsz + 1.0;
+  float gsz = 3.0 + floor(bh(vec2(vSeed * 1.7, 2.2)) * 2.999);
+  float period = gsz * 2.0;
   float posIn = mod(cell, period);
   float inGrp = step(posIn + 0.5, gsz);
-  float grp = floor(cell / period);
-  float litG = step(bh(vec2(grp + 0.31, fl * 1.7 + vSeed * 8.0)), 0.38);
   float win = smoothstep(0.0, fwX, inX) * smoothstep(0.0, fwY, inY);
-  float litWin = win * inGrp * litG;
-  float g0 = grp * period * bay;
-  float g1 = g0 + gsz * bay;
-  float inset = (bay - winW) * 0.5;
-  float gu = min(f.x - (g0 + inset), (g1 - inset) - f.x);
-  float groupMask = smoothstep(0.0, fwX, gu) * smoothstep(0.0, fwY, inY) * litG;
-  float chunk = 10.0;
-  float ci = floor(f.x / chunk);
-  float cu = mod(f.x, chunk);
-  float boxOn = step(bh(vec2(ci + 2.2, fl + vSeed * 3.0)), 0.34);
-  float boxU = min(cu - 1.5, chunk - cu);
-  float boxMask = smoothstep(0.0, fwX, boxU) * smoothstep(0.0, fwY, inY) * boxOn;
-  float winOn = step(0.0, yRel) * (1.0 - vRoof);
+  float pane = win * inGrp;
   float dist = length(cameraPosition - vWp);
   float l1 = smoothstep(52.0, 68.0, dist);
-  float l2 = smoothstep(125.0, 155.0, dist);
-  float glow = mix(litWin, groupMask, l1);
-  glow = mix(glow, boxMask, l2) * winOn;
-  float opening = mix(win, max(win, groupMask), l1);
-  opening = mix(opening, max(opening, boxMask), l2) * winOn;
+  float grow = clamp(max(fwX, fwY) * 0.85, 0.0, 0.22) * l1;
+  float paneFar = smoothstep(-grow, fwX, inX) * smoothstep(-grow, fwY, inY) * inGrp;
+  float winOn = step(0.0, yRel) * (1.0 - vRoof);
+  float glow = mix(pane, paneFar, l1) * winOn;
   float grad = mix(1.0, 0.70, clamp((ly - sill) / winH, 0.0, 1.0));
-  gWinE = vWin * glow * grad * (0.92 + 0.08 * bh(vec2(grp, fl))) * uWinK;
-  base = mix(base, base * 0.18, clamp(opening - glow, 0.0, 1.0));
-  base = mix(base, vec3(0.004, 0.008, 0.014), glow);
+  gWinE = vWin * glow * grad * 1.8 * uWinK;
+  base = mix(base, vec3(0.010, 0.016, 0.026), clamp(glow, 0.0, 1.0));
 
   if (vRoof > 0.5) {
     base = vec3(0.006, 0.010, 0.016);
-    gRough = 0.72; gMetal = 0.15; gEnvK = 0.25; gWinE = vec3(0.0);
+    gRough = 0.72; gMetal = 0.15; gEnvK = 0.25; gIbl = 0.0; gWinE = vec3(0.0);
   }
   diffuseColor.rgb = base;
 }`)
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = clamp(gRough, 0.04, 1.0);')
       .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nmetalnessFactor = clamp(gMetal, 0.0, 1.0);')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance = gWinE;')
-      .replace('#include <lights_fragment_maps>', '#include <lights_fragment_maps>\nradiance *= gEnvK; iblIrradiance *= gEnvK * 0.5;')
+      .replace('#include <lights_fragment_maps>', `#include <lights_fragment_maps>
+radiance *= gEnvK;
+iblIrradiance *= gIbl;`)
   }
-  m.customProgramCacheKey = () => 'facadeV2'
+  m.customProgramCacheKey = () => 'facadeV4'
   return m
 }
 
 export function Buildings({ list }: { list: Prism[] }) {
+  const gl = useThree((s) => s.gl)
   const geo = useMemo(() => buildingGeometry(list), [list])
-  const mat = useMemo(makeBuildingMat, [])
+  const mat = useMemo(() => {
+    const m = makeBuildingMat()
+    m.envMap = facadeEnvPMREM(gl)
+    return m
+  }, [gl])
   return <mesh geometry={geo} material={mat} userData={{ dynamic: true }} frustumCulled={false} />
 }
 
@@ -258,12 +253,12 @@ varying vec3 vWpT; varying float vKT; varying float vFadeT;`)
 varying vec3 vWpT; varying float vKT; varying float vFadeT;`)
       .replace('#include <opaque_fragment>', `{
   float d = distance(cameraPosition, vWpT);
-  float kk = vFadeT > 0.5 ? mix(vKT, 1.4, smoothstep(20.0, 15.0, d)) : vKT;
+  float kk = vFadeT > 0.5 ? mix(1.4, vKT, smoothstep(15.0, 20.0, d)) : vKT;
   outgoingLight *= kk;
 }
 #include <opaque_fragment>`)
   }
-  m.customProgramCacheKey = () => 'trimFacadeV1'
+  m.customProgramCacheKey = () => 'trimFacadeV2'
   return m
 }
 
