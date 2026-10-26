@@ -81,6 +81,7 @@ import { FAKE_LAMP_GLSL, REAL_LIGHTS } from '../utils/fakeLights'
 import { LOOK, neonEnvTex, carSpotUniform } from '../utils/look'
 const PD = LOOK.puddle, SP = LOOK.car.spot
 const g3 = (c: string) => { const k = new THREE.Color(c); return `vec3(${k.r.toFixed(4)},${k.g.toFixed(4)},${k.b.toFixed(4)})` }
+const ICE = g3('#4FC3F7'), WHITE = g3('#E8F4FF')
 /** 头灯地面光斑（椭圆，车前 near–far，宽 width，中心亮度 k，边缘柔化） */
 const CAR_SPOT_GLSL = `uniform vec4 uCar;
 float carSpot(vec2 w){ vec2 d = w - uCar.xy; float a = dot(d, uCar.zw); float b = dot(d, vec2(-uCar.w, uCar.z));
@@ -108,6 +109,8 @@ export function makeAsphalt(color: string, edge: Edge) {
       .replace('#include <common>', `#include <common>
 varying vec3 vWp; varying vec2 vUv0; uniform float uMode; uniform vec2 uRing; uniform vec2 uLamps[6];
 uniform sampler2D uDetail; uniform sampler2D uEnv; float gPud; float gPudR; float gLit; vec4 gD; vec3 gLamp; float gPudL;
+vec3 satCap(vec3 c, float cap){ float l = dot(c, vec3(0.2126, 0.7152, 0.0722)); float mx = max(c.r, max(c.g, c.b)); float mn = min(c.r, min(c.g, c.b));
+  float s = (mx - mn) / max(mx, 1e-4); return mix(vec3(l), c, min(1.0, cap / max(s, 1e-4))); }
 ${FAKE_LAMP_GLSL}
 ${CAR_SPOT_GLSL}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
@@ -121,8 +124,12 @@ ${CAR_SPOT_GLSL}`)
   gLit = clamp(dot(gLamp, vec3(0.3, 0.5, 0.2)) * 10.0, 0.0, 1.0);
   float place = max(smoothstep(0.3, 0.8, edge), gLit);
   float thr = mix(${PD.thrDark.toFixed(3)}, ${PD.thrLit.toFixed(3)}, place);
-  gPud = smoothstep(thr - 0.03, thr + 0.0525, gD.r);   // 水面（b4 柔边 +0.3m ≈0.9m）
-  gPudR = smoothstep(thr - 0.05, thr + 0.015, gD.r);   // 粗糙度过渡带
+  float dP = gD.r - thr;
+  float dp = max(length(vec2(dFdx(dP), dFdy(dP))), 1e-5);
+  float mPerPx = max(length(vec2(length(vec2(dFdx(w.x), dFdy(w.x))), length(vec2(dFdx(w.y), dFdy(w.y))))), 1e-4);
+  float halfW = 0.15 * dp / mPerPx; // 边缘柔化 0.3m（值域宽度 / 坡度）
+  gPud = smoothstep(-halfW, halfW, dP);
+  gPudR = smoothstep(-halfW * 1.35, halfW * 0.35, dP);
   diffuseColor.rgb *= gD.g * 1.25;
   diffuseColor.rgb *= mix(1.0, ${PD.darken.toFixed(3)}, gPud);
   gPudL = gPud;
@@ -137,21 +144,24 @@ if (gPud > 0.001) {
   vec3 V = normalize(cameraPosition - vWp);
   vec3 R = vec3(-V.x, V.y, -V.z);
   vec2 euv = vec2(atan(R.z, R.x) * RECIPROCAL_PI2 + 0.5, asin(clamp(R.y, -1.0, 1.0)) * RECIPROCAL_PI + 0.5);
-  vec3 env = texture2D(uEnv, euv, 3.5).rgb; // mip 偏移=模糊倒影
-  vec3 dc = mix(vec3(0.31, 0.76, 0.97), vec3(0.91, 0.957, 1.0), 0.5 * clamp(gLit * 2.0, 0.0, 1.0)); // b4 倒影只用 #4FC3F7/#E8F4FF，不吃分区色
+  vec3 env = texture2D(uEnv, euv, 3.5).rgb; // mip 偏移=模糊倒影；只取亮度，色相锁在两种规格色
+  vec3 ice = satCap(${ICE}, 0.5);
+  vec3 wht = satCap(${WHITE}, 0.5);
+  vec3 hue = mix(ice, wht, clamp(gLit, 0.0, 1.0));
+  float envL = dot(env, vec3(0.2126, 0.7152, 0.0722));
   float fr = 0.3 + 0.4 * pow(1.0 - clamp(V.y, 0.0, 1.0), 3.0); // 菲涅尔：掠射更亮
-  // 纵向倒影：沿视线方向拉长的软光带（只随横向坐标变化，宽≈0.5–1m，无细线）
   vec2 rt = normalize(vec2(viewMatrix[0][0], viewMatrix[2][0]) + 1e-4); vec2 vh = vec2(-rt.y, rt.x);
-  float sx = dot(vWp.xz, rt) * 3.0; // 相机横向坐标：光带沿视线纵向延伸、向消失点汇聚
+  float sx = dot(vWp.xz, rt) * 3.0;
+  float along = dot(vWp.xz, vh);
   float band = 0.5 + 0.5 * sin(sx * 2.4 + 1.8 * sin(sx * 0.7));
-  band = band * band * (0.55 + 0.45 * sin(dot(vWp.xz, vh) * 0.24 + sx * 0.4));
-  vec3 refl = ((env * ${PD.envK.toFixed(3)} + dc * ${PD.streakK.toFixed(3)} * (0.2 + 2.4 * band)) * ${PD.k.toFixed(3)} + ${g3(PD.ice)} * ${PD.iceK.toFixed(3)}) * fr; // 柔和整片色光 + 冰蓝底，无拉伸条纹
+  band = band * band * (0.55 + 0.45 * sin(along * ${PD.streakHz.toFixed(3)} + sx * ${PD.phaseHz.toFixed(3)}));
+  vec3 refl = hue * ((envL * ${PD.envK.toFixed(3)} + ${PD.iceK.toFixed(3)}) + ${PD.streakK.toFixed(3)} * (0.2 + 2.4 * band)) * ${PD.k.toFixed(3)} * fr;
   totalEmissiveRadiance += gPud * min(refl, vec3(${PD.cap.toFixed(3)}));
 }
 ${SPOT_EMIT}
 ${LAMP_EMIT}`)
   }
-  m.customProgramCacheKey = () => 'asphalt2'
+  m.customProgramCacheKey = () => 'asphaltPuddleV1'
   return m
 }
 
