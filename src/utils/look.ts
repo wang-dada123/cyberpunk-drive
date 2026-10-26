@@ -54,6 +54,43 @@ neonEnvTex.mapping = THREE.EquirectangularReflectionMapping
 neonEnvTex.colorSpace = THREE.SRGBColorSpace
 neonEnvTex.wrapS = THREE.RepeatWrapping
 
+/**
+ * 立面专用环境：只有地平线光带和几团柔光，没有 2px 窗格。
+ * 车漆继续用上面的 neonEnvTex（PMREM），不跟立面混。
+ * MeshStandard 的 IBL 只采样 CubeUV；等距圆柱贴上去 getIBLRadiance 直接返回 0。
+ */
+function drawFacadeEnv() {
+  const W = 512, H = 256, c = document.createElement('canvas'); c.width = W; c.height = H
+  const g = c.getContext('2d')!
+  const sky = g.createLinearGradient(0, 0, 0, H)
+  sky.addColorStop(0, '#02060e'); sky.addColorStop(0.34, '#07111e'); sky.addColorStop(0.46, '#1a3d5c')
+  sky.addColorStop(0.52, '#0c1828'); sky.addColorStop(1, '#010204')
+  g.fillStyle = sky; g.fillRect(0, 0, W, H)
+  const band = (y: number, h: number, col: string, a: number) => { g.globalAlpha = a; g.fillStyle = col; g.fillRect(0, y, W, h); g.globalAlpha = 1 }
+  band(H * 0.455, 4, '#4FC3F7', 1)
+  band(H * 0.47, 12, '#c5ecff', 0.95)
+  band(H * 0.505, 4, '#E8F4FF', 0.92)
+  band(H * 0.32, 3, '#4FC3F7', 0.5)
+  for (const [x, y, col] of [[78, 116, '#e7f7ff'], [236, 104, '#8ad8ff'], [404, 122, '#E8F4FF']] as const) {
+    const rad = g.createRadialGradient(x, y, 0, x, y, 78)
+    rad.addColorStop(0, col); rad.addColorStop(1, 'rgba(0,0,0,0)')
+    g.fillStyle = rad; g.fillRect(x - 78, y - 78, 156, 156)
+  }
+  return c
+}
+let facadePmrem: THREE.Texture | null = null
+export function facadeEnvPMREM(gl: THREE.WebGLRenderer) {
+  if (!facadePmrem) {
+    const tex = new THREE.CanvasTexture(drawFacadeEnv())
+    tex.mapping = THREE.EquirectangularReflectionMapping
+    tex.colorSpace = THREE.SRGBColorSpace
+    const gen = new THREE.PMREMGenerator(gl)
+    facadePmrem = gen.fromEquirectangular(tex).texture
+    gen.dispose(); tex.dispose()
+  }
+  return facadePmrem
+}
+
 let pmrem: THREE.Texture | null = null
 /** 车漆用 PMREM（只生成一次，非实时 CubeCamera） */
 export function neonEnvPMREM(gl: THREE.WebGLRenderer) {

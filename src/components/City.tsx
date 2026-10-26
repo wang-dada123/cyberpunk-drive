@@ -146,7 +146,7 @@ function buildCity() {
     const [cx, cz] = cen(poly), did = districtAt(cx, cz)
     prisms.push({ poly, h, mat: pickMat(r()), win: winCol(cx, cz), seed })
     plots.push({ poly, h })
-    // 屋顶檐线 + 离地 4.6m 腰线，截面 4×4cm，转角各伸 2cm 接上。强度在 TrimStrips 里按距离 2.2→1.4
+    // 屋顶檐线 + 离地 4.6m 腰线，截面 4×4cm。两端各伸出 10cm，转角才能接上（同色重叠不会闪）。强度在 TrimStrips 里按距离 2.2→1.4
     const c = EAVE[r() < 0.5 ? 0 : 1]
     const ys = [h - 0.02]
     if (h > 5.2) ys.push(4.6)
@@ -154,7 +154,7 @@ function buildCity() {
       const a = poly[k], b = poly[(k + 1) % poly.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 0.5) continue
       let nx = b[1] - a[1], nz = -(b[0] - a[0]); nx /= L; nz /= L
       if (nx * ((a[0] + b[0]) / 2 - cx) + nz * ((a[1] + b[1]) / 2 - cz) < 0) { nx = -nx; nz = -nz }
-      for (const y of ys) trims.push({ p: [(a[0] + b[0]) / 2 + nx * 0.04, y, (a[1] + b[1]) / 2 + nz * 0.04], s: [0.04, 0.04, L + 0.04], ry: Math.atan2(b[0] - a[0], b[1] - a[1]), color: c, k: 2.2, fade: true })
+      for (const y of ys) trims.push({ p: [(a[0] + b[0]) / 2 + nx * 0.04, y, (a[1] + b[1]) / 2 + nz * 0.04], s: [0.04, 0.04, L + 0.20], ry: Math.atan2(b[0] - a[0], b[1] - a[1]), color: c, k: 2.2, fade: true })
     }
     // 内圈：最长边朝路一侧挂招牌（每区 ≤6）
     const n = signN.get(did) ?? 0
@@ -179,7 +179,7 @@ function buildCity() {
       const a = poly[k], b = poly[(k + 1) % 4], L = Math.hypot(b[0] - a[0], b[1] - a[1])
       let nx = b[1] - a[1], nz = -(b[0] - a[0]); nx /= L; nz /= L
       if (nx * ((a[0] + b[0]) / 2) + nz * ((a[1] + b[1]) / 2 - midZ) < 0) { nx = -nx; nz = -nz }
-      trims.push({ p: [(a[0] + b[0]) / 2 + nx * 0.04, y, (a[1] + b[1]) / 2 + nz * 0.04], s: [0.04, 0.04, L + 0.04], ry: Math.atan2(b[0] - a[0], b[1] - a[1]), color: '#00B0FF', k: 1.8, fade: false })
+      trims.push({ p: [(a[0] + b[0]) / 2 + nx * 0.04, y, (a[1] + b[1]) / 2 + nz * 0.04], s: [0.04, 0.04, L + 0.20], ry: Math.atan2(b[0] - a[0], b[1] - a[1]), color: '#00B0FF', k: 1.8, fade: false })
     }
   }
   if (import.meta.env.DEV) Object.assign(window, { __bodies: bodies, __segs: segs, __plots: plots, __facadeMix: measureFacades(prisms), __trimN: trims.length })
