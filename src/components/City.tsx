@@ -9,7 +9,7 @@ const SPAWN_ARROW_PATHS = SPAWN_PATHS.map((p) => ({ pts: p.pts, color: NAV[p.id]
 import { colors, districts, type DistrictId } from '../theme/colors'
 import { PLAZA_R, WORLD_HALF, rings, segs, roadClearance, districtAt, distSeg, ringDim, TUNNEL, TUNNEL_R1, type Seg } from '../data/mapLayout'
 import { Structures } from './Structures'
-import { Buildings, type Prism } from './Buildings'
+import { Buildings, TrimStrips, measureFacades, type Prism, type Trim } from './Buildings'
 import { neonEnvTex } from '../utils/look'
 import { outerLayout, innerLayout, area as polyArea, type Poly } from '../data/outerLayout'
 const cen = (P: Poly): [number, number] => { let x = 0, z = 0; for (const [a, b] of P) { x += a / P.length; z += b / P.length } return [x, z] }
@@ -129,6 +129,7 @@ function buildCity() {
   const bodies: Box[] = []
   const roofs: Box[] = []
   const strips: Box[] = []
+  const trims: Trim[] = []
   const prisms: Prism[] = []
   const signs: SignSpec[] = []
   const signN = new Map<string, number>()
@@ -140,18 +141,20 @@ function buildCity() {
   for (const P of inner) { const [cx, cz] = cen(P), d = districtAt(cx, cz); if (!byD.has(d)) byD.set(d, []); byD.get(d)!.push(P) }
   const innerKeep: Poly[] = []
   for (const L of byD.values()) innerKeep.push(...L.sort((p, q) => polyArea(q) - polyArea(p)).slice(0, 8))
-  const EAVE = [new THREE.Color('#E8F4FF').multiplyScalar(2.2), new THREE.Color('#4FC3F7').multiplyScalar(2.2)]
+  const EAVE = ['#E8F4FF', '#4FC3F7']
   const addBlock = (poly: Poly, h: number, seed: number, isInner: boolean) => {
     const [cx, cz] = cen(poly), did = districtAt(cx, cz)
     prisms.push({ poly, h, mat: pickMat(r()), win: winCol(cx, cz), seed })
     plots.push({ poly, h })
-    // 檐线灯条：整圈（每条边一根 12cm 方条，两端各伸 6cm 把转角接上）→ 和其它灯条同一个实例化绘制
+    // 屋顶檐线 + 离地 4.6m 腰线，截面 4×4cm，转角各伸 2cm 接上。强度在 TrimStrips 里按距离 2.2→1.4
     const c = EAVE[r() < 0.5 ? 0 : 1]
+    const ys = [h - 0.02]
+    if (h > 5.2) ys.push(4.6)
     for (let k = 0; k < poly.length; k++) {
       const a = poly[k], b = poly[(k + 1) % poly.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 0.5) continue
       let nx = b[1] - a[1], nz = -(b[0] - a[0]); nx /= L; nz /= L
       if (nx * ((a[0] + b[0]) / 2 - cx) + nz * ((a[1] + b[1]) / 2 - cz) < 0) { nx = -nx; nz = -nz }
-      for (const y of [h - 0.35, 4.6]) strips.push({ p: [(a[0] + b[0]) / 2 + nx * 0.06, y, (a[1] + b[1]) / 2 + nz * 0.06], s: [0.12, 0.12, L + 0.12], ry: Math.atan2(b[0] - a[0], b[1] - a[1]), c }) // 屋檐 + 4.6m 雨棚檐线（行车视角可见转角）
+      for (const y of ys) trims.push({ p: [(a[0] + b[0]) / 2 + nx * 0.04, y, (a[1] + b[1]) / 2 + nz * 0.04], s: [0.04, 0.04, L + 0.04], ry: Math.atan2(b[0] - a[0], b[1] - a[1]), color: c, k: 2.2, fade: true })
     }
     // 内圈：最长边朝路一侧挂招牌（每区 ≤6）
     const n = signN.get(did) ?? 0
@@ -168,19 +171,18 @@ function buildCity() {
   }
   innerKeep.forEach((P, i) => { const [cx, cz] = cen(P); addBlock(P, 10 + r() * 14 + Math.min(Math.hypot(cx, cz) / 8, 14) * r(), 300 + i, true) })
   outerLayout().forEach((P, i) => addBlock(P, 14 + r() * 16 + r() * 10, 500 + i, false))
-  { // b4 补：作品街尽端实体塔楼——深色混凝土（不透明）+ 竖窗，并入 prisms 合批 + 凸包碰撞；腰线每 12m 一圈 ×1.8，走 strips 实例化
+  { // 作品街尽端实体塔 ≥80m：与其它楼同一套三段立面 + 竖窗（作品街 #00B0FF ×0.70）。腰线每 12m，#00B0FF ×1.8，不随近距离压暗
     const T = END_TOWER, poly: Poly = [[T.x0, T.z1], [T.x1, T.z1], [T.x1, T.z0], [T.x0, T.z0]]
     addBlock(poly, T.h, 990, false)
-    prisms[prisms.length - 1].mat = 1; prisms[prisms.length - 1].win = new THREE.Color(districts.portfolio.accent).multiplyScalar(1.3)
-    const W = new THREE.Color(districts.portfolio.accent).multiplyScalar(1.8)
+    const midZ = (T.z0 + T.z1) / 2
     for (let y = 12; y < T.h - 4; y += 12) for (let k = 0; k < 4; k++) {
       const a = poly[k], b = poly[(k + 1) % 4], L = Math.hypot(b[0] - a[0], b[1] - a[1])
       let nx = b[1] - a[1], nz = -(b[0] - a[0]); nx /= L; nz /= L
-      if (nx * ((a[0] + b[0]) / 2) + nz * ((a[1] + b[1]) / 2 - (T.z0 + T.z1) / 2) < 0) { nx = -nx; nz = -nz }
-      strips.push({ p: [(a[0] + b[0]) / 2 + nx * 0.1, y, (a[1] + b[1]) / 2 + nz * 0.1], s: [0.25, 0.7, L + 0.25], ry: Math.atan2(b[0] - a[0], b[1] - a[1]), c: W })
+      if (nx * ((a[0] + b[0]) / 2) + nz * ((a[1] + b[1]) / 2 - midZ) < 0) { nx = -nx; nz = -nz }
+      trims.push({ p: [(a[0] + b[0]) / 2 + nx * 0.04, y, (a[1] + b[1]) / 2 + nz * 0.04], s: [0.04, 0.04, L + 0.04], ry: Math.atan2(b[0] - a[0], b[1] - a[1]), color: '#00B0FF', k: 1.8, fade: false })
     }
   }
-  if (import.meta.env.DEV) Object.assign(window, { __bodies: bodies, __segs: segs, __plots: plots })
+  if (import.meta.env.DEV) Object.assign(window, { __bodies: bodies, __segs: segs, __plots: plots, __facadeMix: measureFacades(prisms), __trimN: trims.length })
   // 路面导向光带：沿有 guide 的街道中线
   for (const s of segs) {
     if (!s.guide) continue
@@ -189,7 +191,7 @@ function buildCity() {
     const ry = Math.atan2(bx - ax, bz - az)
     strips.push({ p: [(ax + bx) / 2, 0.06, (az + bz) / 2], s: [0.16, 0.04, len], ry, c: dim(districts[s.guide].accent, 0.35) })
   }
-  return { bodies, roofs, strips, prisms, plots, signs }
+  return { bodies, roofs, strips, trims, prisms, plots, signs }
 }
 
 // ---------- 路面标线（全部实例化） ----------
@@ -429,7 +431,7 @@ function Ground({ G }: { G: number }) {
 }
 
 export function City() {
-  const { bodies, strips, prisms, plots, signs } = useMemo(buildCity, [])
+  const { bodies, strips, trims, prisms, plots, signs } = useMemo(buildCity, [])
   const { stalls, canopies, lanterns } = useMemo(makeStalls, [])
   const { edges, dashes, edgesDim } = useMemo(buildMarkings, [])
   const { props, glows } = useMemo(buildPlaza, []) // 旧放射分格线 tiles 已由石材 shader 取代
@@ -480,6 +482,7 @@ export function City() {
       {/* 建筑（实例化）+ 灯带 + 导向带 + 箭头 */}
       <Buildings list={prisms} />
       <Signs list={signs} />
+      <TrimStrips items={trims} />
       <Boxes items={strips} material={glowMat} />
       {/* 出生点前方流光小箭头（替换原白色大 V 箭头） */}
       <SpawnArrows paths={SPAWN_ARROW_PATHS} />

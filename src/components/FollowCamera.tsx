@@ -149,6 +149,13 @@ export function FollowCamera() {
   useCamInput(cam)
   // priority 0：在 Physics(-50，写入插值后 mesh 位姿) 之后、EffectComposer(1，渲染) 之前
   useFrame((_, rawDt) => {
+    const world = import.meta.env.DEV ? (window as unknown as { __worldCam?: { pos: number[]; look: number[]; fov?: number } }).__worldCam : undefined
+    if (world) {
+      cam.position.set(world.pos[0], world.pos[1], world.pos[2])
+      cam.lookAt(world.look[0], world.look[1], world.look[2])
+      if (world.fov && Math.abs(cam.fov - world.fov) > 0.1) { cam.fov = world.fov; cam.updateProjectionMatrix() }
+      return
+    }
     if (import.meta.env.DEV && (window as unknown as { __topdown?: boolean }).__topdown) {
       cam.position.set(0, 330, 0.01); cam.lookAt(0, 0, 0)
       if (scene.fog) (scene.fog as THREE.FogExp2).density = 0.0006

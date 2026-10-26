@@ -139,7 +139,11 @@ export function LandmarkBeacons() {
           vec4 p = projectionMatrix * viewMatrix * vec4(position * aScl + aOff, 1.0);
           p.z = min(p.z, p.w * 0.99995); gl_Position = p; }`,
       fragmentShader: `varying vec4 vC; varying float vY;
-        void main(){ if (vC.a > 1.5) { gl_FragColor = vec4(vC.rgb * 1.8, 1.0); return; } float a = mix(0.36, 0.08, vY); gl_FragColor = vec4(vC.rgb * a, a); // b4 光柱透明度 <0.4 }`,
+        void main(){
+          if (vC.a > 1.5) { gl_FragColor = vec4(vC.rgb * 1.8, 1.0); return; }
+          float a = mix(0.36, 0.08, vY);
+          gl_FragColor = vec4(vC.rgb * a, a);
+        }`,
     })
     return { geo: g, mat: m }
   }, [])

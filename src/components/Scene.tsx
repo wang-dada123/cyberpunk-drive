@@ -64,7 +64,7 @@ export function Scene() {
       frameloop={MANUAL ? 'never' : 'always'}
       camera={{ position: [0, 6, 12], fov: 50, near: 0.5, far: 180 }}
       gl={{ antialias: AB.has('bloom'), /* 场景走 EffectComposer（RT 无 MSAA），默认帧缓冲 MSAA 只浪费一次全屏 resolve */ powerPreference: 'high-performance' }}
-      onCreated={({ gl, camera }) => { detectRenderer(gl); tierFromRenderer(rendererInfo.name); if (import.meta.env.DEV || DEBUG) Object.assign(window, { __gl: gl, __cam: camera }) }}
+      onCreated={({ gl, camera, scene }) => { detectRenderer(gl); tierFromRenderer(rendererInfo.name); if (import.meta.env.DEV || DEBUG) Object.assign(window, { __gl: gl, __cam: camera, __scene: scene }) }}
       style={{ width: '100%', height: '100%', background: colors.bg }}
     >
       {/* 持续低帧时 DPR 只降一次到 1，不再回升 */}
