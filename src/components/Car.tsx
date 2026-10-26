@@ -1,4 +1,5 @@
 import { SPAWN } from '../data/mapLayout'
+import { expansionDriveStep } from './expansionDrive'
 import { Suspense, useRef } from 'react'
 import { CarModel } from './CarModel'
 import { useFrame } from '@react-three/fiber'
@@ -89,6 +90,7 @@ export function Car() {
   const control = (rb: RapierRigidBody, dt: number) => {
 
     if (import.meta.env.DEV) (window as unknown as { __car?: RapierRigidBody }).__car = rb // 调试/截图用
+    expansionDriveStep(rb, dt)
     let t = rb.translation()
 
     // 防穿模兜底：掉到地面以下则拉回并清零纵向速度
