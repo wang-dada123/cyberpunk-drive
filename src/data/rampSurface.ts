@@ -48,16 +48,58 @@ function row(f: Ramp['frames'][number], hw: number, lift: number, bury: boolean)
   return out
 }
 
+function railClearsLane(ramp: Ramp, i: number) {
+  const { frames, halfW } = ramp
+  const f = frames[i]
+  for (const side of [-1, 1]) {
+    const hw = halfW[i] + 0.9
+    const x = f.x + f.px * side * hw
+    const z = f.z + f.pz * side * hw
+    const y = f.y + 0.02
+    for (let k = 0; k < frames.length - 1; k++) {
+      if (Math.abs(k - i) <= 3) continue
+      const a = frames[k], b = frames[k + 1]
+      const abx = b.x - a.x, abz = b.z - a.z
+      const l2 = abx * abx + abz * abz || 1
+      let t = ((x - a.x) * abx + (z - a.z) * abz) / l2
+      t = t < 0 ? 0 : t > 1 ? 1 : t
+      const d = Math.hypot(x - (a.x + abx * t), z - (a.z + abz * t))
+      const half = halfW[k] + (halfW[k + 1] - halfW[k]) * t
+      const fy = a.y + (b.y - a.y) * t
+      // 护栏底缘若落在另一段路面的车道里，侧向驶入或下坡会被它挡住。
+      if (d < half + 0.5 && y < fy + 1.2) return false
+    }
+  }
+  return true
+}
+
+/** 护栏只铺在抬起来、并且不会插进坡口或汇入车道的那一段。 */
+export function rampRailSpan(ramp: Ramp): [number, number] {
+  const { frames, deckOwn } = ramp
+  let start = -1
+  let end = -1
+  for (let i = 0; i <= deckOwn; i++) {
+    if (frames[i].y < 0.9 || !railClearsLane(ramp, i)) {
+      if (start >= 0) break
+      continue
+    }
+    if (start < 0) start = i
+    end = i
+  }
+  if (start < 0 || end - start < 2) {
+    const a = Math.max(0, ramp.lip - 4)
+    return [a, ramp.lip]
+  }
+  return [start, end]
+}
+
 export function rampCollider(ramp: Ramp): { deck: Tris; wall: Tris } {
   const { frames, halfW, lip } = ramp
   const pos: number[] = []
   const idx: number[] = []
   const across = SIDES.length
   const base = 0
-  const rows = frames.map((f, i) => {
-    const lift = i < lip ? 0 : Math.min(1, (i - lip + 1) / 3) * 0.03
-    return row(f, halfW[i], lift, f.y < 0.35)
-  })
+  const rows = frames.map((f, i) => row(f, halfW[i], 0, f.y < 0.35 && i <= lip))
   for (const r of rows) for (const p of r) pos.push(p[0], p[1], p[2])
   for (let i = 0; i < rows.length - 1; i++) {
     for (let s = 0; s < across - 1; s++) {
@@ -70,21 +112,21 @@ export function rampCollider(ramp: Ramp): { deck: Tris; wall: Tris } {
 
   const wpos: number[] = []
   const widx: number[] = []
-  const wallAt = frames.findIndex((f) => f.y > 0.5)
-  const wallEnd = lip
-  if (wallAt >= 0 && wallEnd - wallAt >= 2) {
+  const [wallAt, wallEnd] = rampRailSpan(ramp)
+  if (wallEnd - wallAt >= 2) {
     for (const side of [-1, 1]) {
       const a: number[][] = []
       const b: number[][] = []
       for (let i = wallAt; i <= wallEnd; i++) {
         const f = frames[i]
         const u = (i - wallAt) / Math.max(1, wallEnd - wallAt)
-        const grow = Math.min(1, (i - wallAt + 1) / 5)
-        const tail = u > 0.8 ? Math.max(0.2, (1 - u) / 0.2) : 1
-        const hw = halfW[i] + 0.15
+        const grow = Math.min(1, (i - wallAt + 1) / 6)
+        const tail = u > 0.75 ? Math.max(0, (1 - u) / 0.25) : 1
+        if (grow * tail < 0.05) break
+        const hw = halfW[i] + 0.9
         const x = f.x + f.px * side * hw
         const z = f.z + f.pz * side * hw
-        const top = f.y + 0.1 + 0.8 * grow * tail
+        const top = f.y + 0.02 + 0.85 * grow * tail
         a.push([x, f.y + 0.02, z])
         b.push([x, top, z])
       }

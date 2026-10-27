@@ -204,6 +204,11 @@ export type Ramp = {
   lip: number
   /** 汇入高架中线的那一帧。 */
   join: number
+  /**
+   * 贴着桥面中线、高度与桥面一致的最后一帧。
+   * 这之前桥面碰撞盒让开，只留这一条坡面；之后坡面埋进桥面盒子下面。
+   */
+  deckOwn: number
   landAng: number
 }
 
@@ -236,7 +241,7 @@ function buildRamp(deg: number): Omit<Ramp, 'deg' | 'sector'> {
     push(r * Math.cos(A), y, -r * Math.sin(A), 30 - 10 * u)
   }
   const mouth = raw.length - 1
-  const nClimb = 24
+  const nClimb = 36
   for (let i = 1; i <= nClimb; i++) {
     const u = i / nClimb
     const ease = (1 - Math.cos(Math.PI * u)) / 2
@@ -246,27 +251,62 @@ function buildRamp(deg: number): Omit<Ramp, 'deg' | 'sector'> {
     push(rad * Math.cos(ang), y, -rad * Math.sin(ang), 20 - 10 * ease)
   }
   const lip = raw.length - 1
-  const nOnto = 6
-  for (let i = 1; i <= nOnto; i++) {
-    const u = i / nOnto
-    const rad = crestR + (landR - crestR) * u
-    let x = rad * Math.cos(landAng)
-    let z = -rad * Math.sin(landAng)
-    const s = u * u * (3 - 2 * u)
-    x = x * (1 - s) + land.x * s
-    z = z * (1 - s) + land.z * s
-    push(x, land.y, z, 10)
+  // 汇入方向避开飞台和缺口。唇部车头朝外：角度用 u²（起点角速度 0），内侧偏移用 (1-u)²（终点径向速度 0）。
+  const prefer = Math.sign(sweep) || 1
+  const roomOf = (s: number) => {
+    let room = 0
+    for (let d = 4; d <= 210; d += 4) {
+      const f = frameAt(wrapAng(landAng + s * (d / Math.max(40, landR))))
+      if (f.gap || f.kick) return room
+      room = d
+    }
+    return room
+  }
+  const roomP = roomOf(prefer)
+  const roomN = roomOf(-prefer)
+  const bury = 6
+  const layout = (room: number) => {
+    const mergeLen = Math.min(0.34 * landR, Math.max(0.18 * landR, room * 0.42))
+    const own = Math.min(48, room - mergeLen - bury - 4)
+    const used = mergeLen + own + bury
+    return { merge: mergeLen / Math.max(40, landR), own, ok: own >= 26 && used <= room - 1 }
+  }
+  const fitP = layout(roomP)
+  const fitN = layout(roomN)
+  // 爬升方向只要还放得下汇入，就顺着走。折回坡面会和爬升段叠在一起，车顶到自己的汇入面。
+  const sign = fitP.ok ? prefer : -prefer
+  const chosen = fitP.ok ? fitP : fitN.ok ? fitN : layout(Math.max(roomP, roomN))
+  const merge = chosen.merge
+  const own = chosen.own
+  const nMerge = 32
+  for (let i = 1; i <= nMerge; i++) {
+    const u = i / nMerge
+    const ang = wrapAng(landAng + sign * merge * u * u)
+    const f = frameAt(ang)
+    const inset = (landR - crestR) * (1 - u) * (1 - u)
+    // 唇部宽度 10，弯中稍加宽，汇入桥面时回到 10。两端和相邻段对齐，没有宽度台阶。
+    const w = 10 + 4 * Math.sin(Math.PI * u)
+    push(f.x + f.px * inset, f.y, f.z + f.pz * inset, w)
   }
   const join = raw.length - 1
-  let fx = raw[join].x - raw[join - 1].x
-  let fz = raw[join].z - raw[join - 1].z
-  const fl = Math.hypot(fx, fz) || 1
-  fx /= fl; fz /= fl
-  const tSign = fx * land.tx + fz * land.tz >= 0 ? 1 : -1
-  // 沿桥面再盖 7.6m，把甲板碰撞体的内缘和接缝压在坡面下面。
-  for (const d of [2.4, 5, 7.6]) push(land.x + land.tx * tSign * d, land.y, land.z + land.tz * tSign * d, 10)
+  // 顺着汇入方向再铺桥面。末尾 bury 米埋到桥面盒子下面，这一段之前不放桥面盒子。
+  const nRun = 32
+  let deckOwn = join
+  for (let i = 1; i <= nRun; i++) {
+    const s = ((own + bury) * i) / nRun
+    const ang = wrapAng(landAng + sign * merge + sign * (s / Math.max(40, landR)))
+    const f = frameAt(ang)
+    let y = f.y
+    if (s > own) {
+      const uu = (s - own) / bury
+      const e = uu * uu * (3 - 2 * uu)
+      y = f.y - 0.45 * e
+    } else y = f.y
+    push(f.x, y, f.z, ELEV_W)
+    if (s <= own + 1e-4) deckOwn = raw.length - 1
+  }
   const frames = framesFromPolyline(raw.map((p) => ({ x: p.x, y: p.y, z: p.z })))
-  return { frames, halfW: raw.map((p) => p.w / 2), mouth, lip, join, landAng }
+  return { frames, halfW: raw.map((p) => p.w / 2), mouth, lip, join, deckOwn, landAng }
 }
 
 export const RAMPS: Ramp[] = RAMP_DEGS.map((deg) => ({
@@ -281,6 +321,29 @@ export function nearRampJoin(x: number, z: number, pad = 12) {
     for (const k of [ramp.lip, ramp.join]) {
       const f = ramp.frames[k]
       if (Math.hypot(x - f.x, z - f.z) < pad) return true
+    }
+  }
+  return false
+}
+
+/** 坡面网格自己当路的那一段（唇部到贴桥全高段）。这里不要再放桥面盒子或护栏。 */
+export function underRampMesh(x: number, z: number) {
+  for (const ramp of RAMPS) {
+    const fs = ramp.frames
+    const end = ramp.deckOwn
+    const begin = Math.max(0, ramp.lip - 2)
+    for (let i = begin; i < end; i++) {
+      const a = fs[i]
+      const b = fs[i + 1]
+      const abx = b.x - a.x
+      const abz = b.z - a.z
+      const l2 = abx * abx + abz * abz || 1
+      let t = ((x - a.x) * abx + (z - a.z) * abz) / l2
+      t = t < 0 ? 0 : t > 1 ? 1 : t
+      const px = a.x + abx * t
+      const pz = a.z + abz * t
+      const half = ramp.halfW[i] + (ramp.halfW[i + 1] - ramp.halfW[i]) * t
+      if (Math.hypot(x - px, z - pz) < half + 1.4) return true
     }
   }
   return false
@@ -346,41 +409,85 @@ export type Surf = {
   yaw: number
 }
 
+const elevBest: Surf = { kind: 'elev', y: 0, lat: 0, half: ELEV_W / 2, x: 0, z: 0, yaw: 0 }
+
 function elevHit(x: number, z: number): Surf | null {
   const th = angOf(x, z)
-  let best: Surf | null = null
+  let lat = Infinity
+  let y = 0
+  let fx = 0
+  let fz = 0
+  let tx = 0
+  let tz = 1
   for (const d of [0, -0.025, 0.025, -0.05, 0.05]) {
     const f = frameAt(th + d)
     if (f.gap) continue
     const dx = x - f.x
     const dz = z - f.z
-    const lat = Math.abs(dx * f.px + dz * f.pz)
+    const l = Math.abs(dx * f.px + dz * f.pz)
     const along = Math.abs(dx * f.tx + dz * f.tz)
-    if (along > 5) continue
-    if (!best || lat < best.lat) best = { kind: 'elev', y: f.y, lat, half: ELEV_W / 2, x: f.x, z: f.z, yaw: yawOf(f.tx, f.tz) }
+    if (along > 5 || l >= lat) continue
+    lat = l
+    y = f.y
+    fx = f.x
+    fz = f.z
+    tx = f.tx
+    tz = f.tz
   }
-  if (best && best.lat < ELEV_W / 2 + 22) return best
-  return null
+  if (lat > ELEV_W / 2 + 22) return null
+  elevBest.y = y
+  elevBest.lat = lat
+  elevBest.x = fx
+  elevBest.z = fz
+  elevBest.yaw = yawOf(tx, tz)
+  return elevBest
 }
 
+const rampBest: Surf = { kind: 'ramp', y: 0, lat: 0, half: 0, x: 0, z: 0, yaw: 0 }
+
 function rampHit(x: number, z: number): Surf | null {
-  let best: Surf | null = null
+  let lat = Infinity
+  let half = 0
+  let y = 0
+  let px = 0
+  let pz = 0
+  let tx = 0
+  let tz = 1
   for (const ramp of RAMPS) {
     const fs = ramp.frames
-    for (let i = 0; i < fs.length; i++) {
-      const f = fs[i]
-      const half = ramp.halfW[i]
-      const dx = x - f.x
-      const dz = z - f.z
-      const lat = Math.abs(dx * f.px + dz * f.pz)
-      const along = Math.abs(dx * f.tx + dz * f.tz)
-      if (along > 3.2) continue
-      if (!best || lat < best.lat) best = { kind: 'ramp', y: f.y, lat, half, x: f.x, z: f.z, yaw: yawOf(f.tx, f.tz) }
+    for (let i = 0; i < fs.length - 1; i++) {
+      const a = fs[i]
+      const b = fs[i + 1]
+      const abx = b.x - a.x
+      const abz = b.z - a.z
+      const l2 = abx * abx + abz * abz || 1
+      let t = ((x - a.x) * abx + (z - a.z) * abz) / l2
+      t = t < 0 ? 0 : t > 1 ? 1 : t
+      const qx = a.x + abx * t
+      const qz = a.z + abz * t
+      const d = Math.hypot(x - qx, z - qz)
+      if (d >= lat) continue
+      lat = d
+      half = ramp.halfW[i] + (ramp.halfW[i + 1] - ramp.halfW[i]) * t
+      y = a.y + (b.y - a.y) * t
+      px = qx
+      pz = qz
+      tx = abx
+      tz = abz
     }
   }
-  if (best && best.lat < best.half + 8) return best
-  return null
+  if (lat > half + 3 || !Number.isFinite(lat)) return null
+  const l = Math.hypot(tx, tz) || 1
+  rampBest.y = y
+  rampBest.lat = lat
+  rampBest.half = half
+  rampBest.x = px
+  rampBest.z = pz
+  rampBest.yaw = yawOf(tx / l, tz / l)
+  return rampBest
 }
+
+const portBest: Surf = { kind: 'port', y: PORT_Y, lat: 0, half: 0.4, x: 0, z: 0, yaw: 0 }
 
 function portHit(x: number, z: number): Surf | null {
   const { u, v } = portLocal(x, z)
@@ -388,8 +495,14 @@ function portHit(x: number, z: number): Surf | null {
   const dv = v < -PORT_WID / 2 ? -PORT_WID / 2 - v : v > PORT_WID / 2 ? v - PORT_WID / 2 : 0
   const lat = Math.hypot(du, dv)
   if (lat > 24) return null
-  return { kind: 'port', y: PORT_Y, lat, half: 0.4, x, z, yaw: yawOf(ox, oz) }
+  portBest.lat = lat
+  portBest.x = x
+  portBest.z = z
+  portBest.yaw = yawOf(ox, oz)
+  return portBest
 }
+
+const spurBest: Surf = { kind: 'spur', y: 0.03, lat: 0, half: SPUR.w / 2, x: 0, z: 0, yaw: 0 }
 
 function spurHit(x: number, z: number): Surf | null {
   const [ax, az] = SPUR.a
@@ -398,26 +511,46 @@ function spurHit(x: number, z: number): Surf | null {
   const dz = bz - az
   const l2 = dx * dx + dz * dz || 1
   let t = ((x - ax) * dx + (z - az) * dz) / l2
-  t = Math.max(0, Math.min(1, t))
+  t = t < 0 ? 0 : t > 1 ? 1 : t
   const px = ax + dx * t
   const pz = az + dz * t
   const lat = Math.hypot(x - px, z - pz)
   if (lat > SPUR.w / 2 + 8) return null
   const tl = Math.hypot(dx, dz) || 1
-  return { kind: 'spur', y: 0.03, lat, half: SPUR.w / 2, x: px, z: pz, yaw: yawOf(dx / tl, dz / tl) }
+  spurBest.lat = lat
+  spurBest.x = px
+  spurBest.z = pz
+  spurBest.yaw = yawOf(dx / tl, dz / tl)
+  return spurBest
 }
 
+const hitBuf: Surf[] = []
+
 export function sampleSurface(x: number, z: number, carY: number): Surf | null {
-  const hits = [elevHit(x, z), rampHit(x, z), portHit(x, z), spurHit(x, z)].filter((h): h is Surf => !!h)
-  if (!hits.length) return null
-  hits.sort((a, b) => Math.abs(carY - (a.y + 1)) + a.lat * 0.12 - (Math.abs(carY - (b.y + 1)) + b.lat * 0.12))
-  return hits[0]
+  hitBuf.length = 0
+  const e = elevHit(x, z)
+  const r = rampHit(x, z)
+  const p = portHit(x, z)
+  const s = spurHit(x, z)
+  if (e) hitBuf.push(e)
+  if (r) hitBuf.push(r)
+  if (p) hitBuf.push(p)
+  if (s) hitBuf.push(s)
+  if (!hitBuf.length) return null
+  let best = hitBuf[0]
+  let bestS = Math.abs(carY - (best.y + 0.25)) + best.lat * 0.35
+  for (let i = 1; i < hitBuf.length; i++) {
+    const h = hitBuf[i]
+    const sc = Math.abs(carY - (h.y + 0.25)) + h.lat * 0.35
+    if (sc < bestS) { best = h; bestS = sc }
+  }
+  return best
 }
 
 export function onSurface(s: Surf, carY: number) {
-  if (Math.abs(carY - (s.y + 1)) > 1.65 || carY < s.y - 0.15) return false
-  if (s.kind === 'port') return s.lat < 0.45
-  return s.lat < s.half + 0.35
+  if (carY < s.y - 0.55 || carY > s.y + 2.5) return false
+  if (s.kind === 'port') return s.lat < 0.7
+  return s.lat < s.half + 1.5
 }
 
 /** 箱型：长 / 短 / 叠箱 / 方箱。本地 [切向宽, 高, 向外长]，旋转 PORT_RY 后长轴沿 u。约 8m 满铺 ~77 个的 30%。 */
