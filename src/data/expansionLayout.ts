@@ -4,7 +4,8 @@
  *
  * 环城高架 r=255、宽 10。西南 150°–300° 路面 +8m；其余高架巡航 +6m
  * （东南支路要从桥下进港，第三人称相机约 4m，+4m 净空不够）。
- * 4 匝道接外环：20° / 160° / 250° / 340°。北段 60°–120° 五个 S 弯，
+ * 4 匝道接外环：20° / 160° / 250° / 340°。坡口贴在外环路面上（y≈0），
+ * 过了外环外缘才爬升，两侧都能拐上去。北段 60°–120° 五个 S 弯，
  * 35° 与 150° 外漂弯（路形，半径约 35）。飞台 J1 在 200°，J2 仅占位。
  * 工业港区东南 150×170，入口外环 -40°、10m 支路。集装箱约 30%（相对 8m 满铺）。
  * 不做计时赛、不做吊桥缺口。
@@ -186,48 +187,104 @@ function framesFromPolyline(raw: { x: number; y: number; z: number }[]): RoadFra
 
 export const RAMP_DEGS = [20, 160, 250, 340] as const
 
-function buildRamp(deg: number) {
-  const A = deg * DEG
-  const end = frameAt(A)
-  const endH = end.base
-  const swept = endH > H_LO + 0.4
-  const dAng = swept ? -16 * DEG : 0
-  const startR = 208
-  const steps = 28
-  const raw: { x: number; y: number; z: number }[] = []
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps
-    const ang = A + dAng * (1 - t)
-    const rad = startR + (elevRadius(A) - startR) * t
-    const y = 0.04 + (endH - 0.04) * (1 - Math.cos(Math.PI * t)) / 2
-    raw.push({ x: rad * Math.cos(ang), y, z: -rad * Math.sin(ang) })
-  }
-  // 内边缘之前就停，避免末端被收到内侧时折返，护栏盒子横在车道上。
-  const hw = ELEV_W / 2
-  const inner = elevRadius(A) - hw
-  let cut = raw.length
-  for (let i = 1; i < raw.length; i++) {
-    if (Math.hypot(raw[i].x, raw[i].z) >= inner) { cut = i; break }
-  }
-  raw.length = Math.max(2, cut)
-  const tail = raw[raw.length - 1]
-  const prev = raw[raw.length - 2]
-  let dx = tail.x - prev.x
-  let dz = tail.z - prev.z
-  const dl = Math.hypot(dx, dz) || 1
-  dx /= dl
-  dz /= dl
-  // 顺着匝道爬上桥面，盖过内边缘立面。最后 2m 只给视觉，碰撞体丢掉，避免和甲板叠成坎。
-  raw.push({ x: tail.x + dx * 3.5, y: end.base, z: tail.z + dz * 3.5 })
-  raw.push({ x: tail.x + dx * 5.5, y: end.base, z: tail.z + dz * 5.5 })
-  return framesFromPolyline(raw)
+/** 坡口贴地高度。外环路面碰撞顶面是 y=0，这里只抬 2cm，边缘再埋进地里。 */
+export const RAMP_FLAT_Y = 0.02
+const RAMP_R0 = 206
+const RAMP_FLAT_R = 230
+const RAMP_SWEEP = 9 * DEG
+
+export type Ramp = {
+  deg: number
+  sector: number
+  frames: RoadFrame[]
+  halfW: number[]
+  /** 贴地段最后一帧。此前没有护栏，外环两个方向都能拐进来。 */
+  mouth: number
+  /** 爬到桥面高度的第一帧，还在桥面内边缘外侧。 */
+  lip: number
+  /** 汇入高架中线的那一帧。 */
+  join: number
+  landAng: number
 }
 
-export const RAMPS: { deg: number; sector: number; frames: RoadFrame[] }[] = RAMP_DEGS.map((deg) => ({
+/** 往远离最近对角街坊的方向甩，避免爬升段扫进环外地块。 */
+function sweepSign(deg: number) {
+  let best = 1e9
+  let sign = 1
+  for (const c of [45, 135, 225, 315]) {
+    const d = ((deg - c + 540) % 360) - 180
+    if (Math.abs(d) < best) { best = Math.abs(d); sign = d >= 0 ? 1 : -1 }
+  }
+  return sign
+}
+
+function buildRamp(deg: number): Omit<Ramp, 'deg' | 'sector'> {
+  const A = deg * DEG
+  const sweep = RAMP_SWEEP * sweepSign(deg)
+  const landAng = wrapAng(A + sweep)
+  const land = frameAt(landAng)
+  const landR = Math.hypot(land.x, land.z)
+  // 在桥面内边缘之前 2.5m 就抬到桥面高度，后面一段是平的，不会顶到甲板立面。
+  const crestR = landR - ELEV_W / 2 - 2.5
+  const raw: { x: number; y: number; z: number; w: number }[] = []
+  const push = (x: number, y: number, z: number, w: number) => raw.push({ x, y, z, w })
+  const nFlat = 16
+  for (let i = 0; i <= nFlat; i++) {
+    const u = i / nFlat
+    const r = RAMP_R0 + (RAMP_FLAT_R - RAMP_R0) * u
+    const y = r < 213 ? -0.16 + (RAMP_FLAT_Y + 0.16) * ((r - RAMP_R0) / (213 - RAMP_R0)) : RAMP_FLAT_Y
+    push(r * Math.cos(A), y, -r * Math.sin(A), 30 - 10 * u)
+  }
+  const mouth = raw.length - 1
+  const nClimb = 24
+  for (let i = 1; i <= nClimb; i++) {
+    const u = i / nClimb
+    const ease = (1 - Math.cos(Math.PI * u)) / 2
+    const ang = A + sweep * ease
+    const rad = RAMP_FLAT_R + (crestR - RAMP_FLAT_R) * u
+    const y = RAMP_FLAT_Y + (land.y - RAMP_FLAT_Y) * ease
+    push(rad * Math.cos(ang), y, -rad * Math.sin(ang), 20 - 10 * ease)
+  }
+  const lip = raw.length - 1
+  const nOnto = 6
+  for (let i = 1; i <= nOnto; i++) {
+    const u = i / nOnto
+    const rad = crestR + (landR - crestR) * u
+    let x = rad * Math.cos(landAng)
+    let z = -rad * Math.sin(landAng)
+    const s = u * u * (3 - 2 * u)
+    x = x * (1 - s) + land.x * s
+    z = z * (1 - s) + land.z * s
+    push(x, land.y, z, 10)
+  }
+  const join = raw.length - 1
+  let fx = raw[join].x - raw[join - 1].x
+  let fz = raw[join].z - raw[join - 1].z
+  const fl = Math.hypot(fx, fz) || 1
+  fx /= fl; fz /= fl
+  const tSign = fx * land.tx + fz * land.tz >= 0 ? 1 : -1
+  // 沿桥面再盖 7.6m，把甲板碰撞体的内缘和接缝压在坡面下面。
+  for (const d of [2.4, 5, 7.6]) push(land.x + land.tx * tSign * d, land.y, land.z + land.tz * tSign * d, 10)
+  const frames = framesFromPolyline(raw.map((p) => ({ x: p.x, y: p.y, z: p.z })))
+  return { frames, halfW: raw.map((p) => p.w / 2), mouth, lip, join, landAng }
+}
+
+export const RAMPS: Ramp[] = RAMP_DEGS.map((deg) => ({
   deg,
   sector: sectorOf(deg * DEG),
-  frames: buildRamp(deg),
+  ...buildRamp(deg),
 }))
+
+/** 高架内侧护栏在汇入点附近让开，否则坡顶正对着一堵墙。 */
+export function nearRampJoin(x: number, z: number, pad = 12) {
+  for (const ramp of RAMPS) {
+    for (const k of [ramp.lip, ramp.join]) {
+      const f = ramp.frames[k]
+      if (Math.hypot(x - f.x, z - f.z) < pad) return true
+    }
+  }
+  return false
+}
 
 const ox = Math.cos(PORT_ANG)
 const oz = -Math.sin(PORT_ANG)
@@ -264,9 +321,12 @@ export function expansionVirtualSegs(): { a: XZ; b: XZ; w: number; virtual: true
     out.push({ a: [f0.x, f0.z], b: [f1.x, f1.z], w: 28, virtual: true })
   }
   for (const ramp of RAMPS) {
-    const a = ramp.frames[0]
-    const b = ramp.frames[ramp.frames.length - 1]
-    out.push({ a: [a.x, a.z], b: [b.x, b.z], w: 16, virtual: true })
+    const fs = ramp.frames
+    for (let i = 0; i < fs.length - 1; i += 2) {
+      const j = Math.min(fs.length - 1, i + 2)
+      const w = Math.max(ramp.halfW[i], ramp.halfW[j]) * 2 + 8
+      out.push({ a: [fs[i].x, fs[i].z], b: [fs[j].x, fs[j].z], w, virtual: true })
+    }
   }
   const w = PORT_WID + 10
   const hw = w / 2
@@ -307,17 +367,18 @@ function rampHit(x: number, z: number): Surf | null {
   let best: Surf | null = null
   for (const ramp of RAMPS) {
     const fs = ramp.frames
-    for (let i = 0; i < fs.length - 1; i++) {
+    for (let i = 0; i < fs.length; i++) {
       const f = fs[i]
+      const half = ramp.halfW[i]
       const dx = x - f.x
       const dz = z - f.z
       const lat = Math.abs(dx * f.px + dz * f.pz)
       const along = Math.abs(dx * f.tx + dz * f.tz)
       if (along > 3.2) continue
-      if (!best || lat < best.lat) best = { kind: 'ramp', y: f.y, lat, half: ELEV_W / 2, x: f.x, z: f.z, yaw: yawOf(f.tx, f.tz) }
+      if (!best || lat < best.lat) best = { kind: 'ramp', y: f.y, lat, half, x: f.x, z: f.z, yaw: yawOf(f.tx, f.tz) }
     }
   }
-  if (best && best.lat < ELEV_W / 2 + 8) return best
+  if (best && best.lat < best.half + 8) return best
   return null
 }
 
