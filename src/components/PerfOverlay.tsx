@@ -4,6 +4,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { rendererInfo } from '../utils/rendererCheck'
 import { carVisual, physStats } from './Car'
+import { expansionStats } from './expansionDrive'
 import { camState, camStats } from './FollowCamera'
 
 /**
@@ -41,6 +42,7 @@ export function PerfOverlay() {
       ...(narrow ? { top: '64px' } : { bottom: '8px' }), fontSize: narrow ? '9.5px' : '11px',
       contain: 'strict', background: 'rgba(2,6,12,0.78)', color: '#9fe6ff', font: '11px/1.35 monospace',
       padding: '6px 8px', border: '1px solid #1f5f7a', pointerEvents: 'none', boxSizing: 'border-box', overflow: 'hidden' })
+    box.style.height = narrow ? '268px' : '258px'
     const t = document.createElement('div'); t.style.whiteSpace = 'pre-wrap'; t.style.wordBreak = 'break-all'
     const c = document.createElement('canvas'); c.width = G; c.height = 100
     box.append(t, c); document.body.appendChild(box)
@@ -89,6 +91,7 @@ export function PerfOverlay() {
       rendererInfo.name.replace(/^ANGLE \(/, "").slice(0, 90) + '\n' +
       `画质 ${tierState.tier} (${tierState.reason})\n` +
       `视角 ${camState.mode} 切档${camStats.switches}次 来源:${camStats.lastSource} NaN:${camStats.nan}\n` +
+      `扩建 扇区${expansionStats.sectors} 飞台${expansionStats.jumps} 复位${expansionStats.resets}\n` +
       `车速曲线(绿,m/s) 物理步/帧(橙)`
     const g = cv.current.getContext('2d')!
     g.clearRect(0, 0, G, 100)

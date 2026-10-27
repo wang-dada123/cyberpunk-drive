@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { segs, rings, PLAZA_R, WORLD_HALF, eggs, BRIDGE, TUNNEL, TUNNEL_R1, GARAGE, garageW, SPIRAL } from '../data/mapLayout'
+import { segs, rings, PLAZA_R, eggs, BRIDGE, TUNNEL, TUNNEL_R1, GARAGE, garageW, SPIRAL } from '../data/mapLayout'
+import { MAP_R, PORT_LEN, PORT_WID, RAMPS, RING_FRAMES, portWorld } from '../data/expansionLayout'
 import { NAV, type NavId } from '../data/nav'
 import { carPose } from './Car'
 import { loadFonts } from './Nav'
@@ -20,7 +21,7 @@ function draw(cv: HTMLCanvasElement, px: number, big: boolean) {
   const g = cv.getContext('2d')!
   g.setTransform(dpr, 0, 0, dpr, 0, 0)
   g.clearRect(0, 0, px, px)
-  const s = (px / 2 - 4) / (WORLD_HALF - 8), c = px / 2
+  const s = (px / 2 - 4) / MAP_R, c = px / 2
   g.save(); g.translate(c, c); g.scale(s, s)
   g.lineCap = 'round'
   const minW = 1.6 / s
@@ -43,6 +44,22 @@ function draw(cv: HTMLCanvasElement, px: number, big: boolean) {
   g.strokeStyle = NAV.garage.color + 'B3'; g.lineWidth = Math.max(minW, 3)
   g.beginPath(); for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { const p = garageW(u * GARAGE.HU, v * GARAGE.HV); g.lineTo(p[0], p[1]) } g.closePath(); g.fillStyle = NAV.garage.color + '40'; g.fill(); g.stroke()
   g.strokeStyle = NAV.spiral.color + 'B3'; g.lineWidth = Math.max(minW, SPIRAL.W); g.beginPath(); g.arc(SPIRAL.c[0], SPIRAL.c[1], SPIRAL.R, 0, Math.PI * 2); g.stroke()
+  // v4 高架（冰蓝）+ 匝道 + 港区框
+  g.strokeStyle = '#4FC3F7'; g.globalAlpha = 0.8; g.lineWidth = Math.max(minW, 6)
+  g.beginPath()
+  for (let i = 0; i < RING_FRAMES.length; i += 4) { const f = RING_FRAMES[i]; if (i === 0) g.moveTo(f.x, f.z); else g.lineTo(f.x, f.z) }
+  g.closePath(); g.stroke()
+  g.strokeStyle = '#7F97A8'; g.lineWidth = Math.max(minW, 4)
+  for (const ramp of RAMPS) {
+    g.beginPath()
+    ramp.frames.forEach((f, i) => { if (i === 0) g.moveTo(f.x, f.z); else g.lineTo(f.x, f.z) })
+    g.stroke()
+  }
+  g.beginPath()
+  for (const [u, v] of [[0, -PORT_WID / 2], [PORT_LEN, -PORT_WID / 2], [PORT_LEN, PORT_WID / 2], [0, PORT_WID / 2]] as const) {
+    const p = portWorld(u, v); g.lineTo(p[0], p[1])
+  }
+  g.closePath(); g.stroke(); g.globalAlpha = 1
   g.fillStyle = '#64FFDA'
   for (const e of eggs) if (discoveredEggs.has(e.id)) { g.beginPath(); g.arc(e.p[0], e.p[2], 2.2 / s, 0, Math.PI * 2); g.fill() }
   g.restore()
@@ -73,7 +90,7 @@ export function Minimap() {
   useEffect(() => { if (cv.current) draw(cv.current, px, big) }, [px, big, eggN, fontOk])
   useEffect(() => {
     let raf = 0
-    const s = (px / 2 - 4) / (WORLD_HALF - 8)
+    const s = (px / 2 - 4) / MAP_R
     const tick = () => {
       raf = requestAnimationFrame(tick)
       const p = carPose.position, q = carPose.quaternion

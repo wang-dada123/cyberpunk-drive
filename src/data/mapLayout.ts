@@ -1,5 +1,6 @@
 /** 地图 v2（Carroll 已批准）+ 扩展路网。单位 m，北 = -Z，东 = +X */
 import { districts, type DistrictId } from '../theme/colors'
+import { expansionVirtualSegs, SPUR } from './expansionLayout'
 
 export type Ring = { r: number; w: number }
 
@@ -169,6 +170,9 @@ export const segs: Seg[] = [
   { a: SPIRAL.c, b: SPIRAL.c, w: (SPIRAL.R + SPIRAL.W / 2) * 2 + 6, virtual: true },
   { a: spEnd.p, b: [spEnd.p[0] + spEnd.T[0] * (SPIRAL.ROOF + 2), spEnd.p[1] + spEnd.T[1] * (SPIRAL.ROOF + 2)], w: SPIRAL.ROOF_W + 4, virtual: true },
   { a: [sp0.p[0] - sp0.T[0] * 30 + sp0.N[0] * 6, sp0.p[1] - sp0.T[1] * 30 + sp0.N[1] * 6], b: [sp0.p[0] - sp0.T[0] * SPIRAL.LEAD, sp0.p[1] - sp0.T[1] * SPIRAL.LEAD], w: 8, dim: true },
+  // v4 港区支路（地面，从外环东南钻高架进港）。高架 / 匝道 / 港区本体只做避让，不在这里画。
+  { a: SPUR.a, b: SPUR.b, w: SPUR.w, dim: true },
+  ...expansionVirtualSegs(),
 ]
 
 /** 彩蛋占位（第一批：天桥 E1/E2、隧道 E5/E6、窄巷 E9） */

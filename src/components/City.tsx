@@ -8,6 +8,9 @@ import { NAV, SPAWN_PATHS, END_TOWER } from '../data/nav'
 const SPAWN_ARROW_PATHS = SPAWN_PATHS.map((p) => ({ pts: p.pts, color: NAV[p.id].color }))
 import { colors, districts, type DistrictId } from '../theme/colors'
 import { PLAZA_R, WORLD_HALF, rings, segs, roadClearance, districtAt, distSeg, ringDim, TUNNEL, TUNNEL_R1, type Seg } from '../data/mapLayout'
+import { PLAY_HALF } from '../data/expansionLayout'
+import { ElevatedRing } from './ElevatedRing'
+import { PortDistrict } from './PortDistrict'
 import { Structures } from './Structures'
 import { Buildings, TrimStrips, measureFacades, type Prism, type Trim } from './Buildings'
 import { neonEnvTex } from '../utils/look'
@@ -435,7 +438,7 @@ export function City() {
   const { stalls, canopies, lanterns } = useMemo(makeStalls, [])
   const { edges, dashes, edgesDim } = useMemo(buildMarkings, [])
   const { props, glows } = useMemo(buildPlaza, []) // 旧放射分格线 tiles 已由石材 shader 取代
-  const G = WORLD_HALF
+  const G = PLAY_HALF // 围墙外扩，盖住高架 r≈255 和东南港区；楼还是按 WORLD_HALF 排
   return (
     <group>
       {/* 地面 + 边界墙（车不会掉出世界） */}
@@ -502,6 +505,8 @@ export function City() {
       <GateFrame position={[-48, 0, -66]} rotationY={-Math.PI / 2} color={districts.hidden.accent} gap={7} h={6} />
 
       <Structures />
+      <ElevatedRing />
+      <PortDistrict />
       <group position={[0, 0, STREET_ORIGIN_Z]}>
         <PortfolioStreet />
       </group>
