@@ -219,7 +219,11 @@ export function FollowCamera() {
     // 隧道：车在地面以下时镜头压到顶板下、并限制在隧道横向宽度内（不穿顶、不穿墙）
     const inTunnel = _pos.y < -0.8
     if (inTunnel) clampTunnel(_tmp, _pos.y)
-    third.pos.lerp(_tmp, damp(T_K_POS, dt))
+    const pk = damp(T_K_POS, dt)
+    third.pos.x += (_tmp.x - third.pos.x) * pk
+    third.pos.z += (_tmp.z - third.pos.z) * pk
+    // 高度和注视点用同一套平滑值。y 再滞后一拍的话，坡上注视点先动、镜头后跟，俯仰会来回抽。
+    third.pos.y = _tmp.y
     if (inTunnel) clampTunnel(third.pos, _pos.y)
     { // 停车场 / 螺旋坡道：相机压在头顶楼板之下（不穿顶）
       const ce = structCeil(third.pos.x, third.pos.z, _pos.y)
