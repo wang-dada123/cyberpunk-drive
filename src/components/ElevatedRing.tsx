@@ -1,14 +1,16 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { CuboidCollider, RigidBody } from '@react-three/rapier'
+import { CuboidCollider, RigidBody, TrimeshCollider } from '@react-three/rapier'
+import { TriMeshFlags } from '@dimforge/rapier3d-compat'
 import * as THREE from 'three'
 import { carPose } from './Car'
 import { expansionStats } from './expansionDrive'
 import {
   ELEV_W, J2_DEG, RAMPS, RING_FRAMES, RING_PER, SECTORS,
-  angDist, angOf, frameAt, nearSpur, portWorld, yawOf,
+  angDist, angOf, frameAt, nearRampJoin, nearSpur, portWorld, yawOf,
   type RoadFrame,
 } from '../data/expansionLayout'
+import { GUIDE_HEX, allRampColliders, rampGuideMesh } from '../data/rampSurface'
 
 if (import.meta.env.DEV) Object.assign(window, { __expansion: { frameAt, yawOf, portWorld, angOf, RAMPS, RING_FRAMES, stats: expansionStats } })
 
@@ -43,7 +45,7 @@ function geo(pos: number[], idx: number[], col?: number[]) {
   return g
 }
 
-function buildDeck(frames: RoadFrame[]) {
+function buildDeck(frames: RoadFrame[], halfW?: number[], yLift = 0.04) {
   const pos: number[] = []
   const col: number[] = []
   const idx: number[] = []
@@ -53,8 +55,9 @@ function buildDeck(frames: RoadFrame[]) {
     rowAt.push(pos.length / 3)
     const prevGap = i > 0 && frames[i - 1].gap
     const lip = f.kick ? Math.min(1, (f.y - f.base) / 1.15) : prevGap ? 0.65 : 0
+    const hw = halfW ? halfW[i] : HW
     for (const s of [-1, 0, 1]) {
-      pos.push(f.x + f.px * s * HW, f.y + 0.04, f.z + f.pz * s * HW)
+      pos.push(f.x + f.px * s * hw, Math.max(0.02, f.y) + yLift, f.z + f.pz * s * hw)
       c.copy(s === 0 ? MID : EDGE).lerp(ICE, s === 0 ? lip * 0.8 : lip * 0.35)
       col.push(c.r, c.g, c.b)
     }
@@ -68,22 +71,23 @@ function buildDeck(frames: RoadFrame[]) {
   return geo(pos, idx, col)
 }
 
-function buildRails(frames: RoadFrame[], withPillars: boolean) {
+function buildRails(frames: RoadFrame[], withPillars: boolean, halfW?: number[], taperN = 0) {
   const pos: number[] = []
   const col: number[] = []
   const idx: number[] = []
-  const hw = HW + 0.2
   for (const side of [-1, 1]) {
     const map: number[] = []
-    for (const f of frames) {
+    frames.forEach((f, i) => {
+      const hw = (halfW ? halfW[i] : HW) + 0.2
+      const grow = taperN > 0 ? Math.min(1, (i + 1) / taperN) : 1
       const x = f.x + f.px * side * hw
       const z = f.z + f.pz * side * hw
       const y0 = f.base + 0.06
-      const y1 = f.base + 0.9
+      const y1 = y0 + 0.84 * grow
       map.push(pos.length / 3)
       pos.push(x, y0, z, x, y1, z)
       col.push(STEEL.r, STEEL.g, STEEL.b, ICE.r, ICE.g, ICE.b)
-    }
+    })
     for (let i = 0; i < frames.length - 1; i++) {
       if (frames[i].gap || frames[i + 1].gap || frames[i].kick || frames[i + 1].kick) continue
       const a = map[i], b = map[i + 1]
@@ -93,7 +97,7 @@ function buildRails(frames: RoadFrame[], withPillars: boolean) {
   if (withPillars) {
     for (let i = 6; i < frames.length; i += 12) {
       const f = frames[i]
-      if (f.gap || f.kick || f.base < 2.2 || nearSpur(f.x, f.z, 9)) continue
+      if (f.gap || f.kick || f.base < 2.2 || nearSpur(f.x, f.z, 9) || nearRampJoin(f.x, f.z, 14)) continue
       for (const side of [-1, 1]) {
         addBox(pos, col, idx, [f.x + f.px * side * (HW + 0.95), f.base * 0.5, f.z + f.pz * side * (HW + 0.95)], [0.65, f.base, 0.65])
       }
@@ -199,8 +203,9 @@ function deckBoxes(frames: RoadFrame[]) {
 
 function wallBoxes(frames: RoadFrame[]) {
   const out: ColBox[] = []
-  const skip = (a: RoadFrame, b: RoadFrame) => a.gap || b.gap || a.kick || b.kick
   for (const side of [-1, 1]) {
+    // 内侧（side 1，px 朝圆心）在匝道汇入处断开，坡面才能开上桥。
+    const skip = (a: RoadFrame, b: RoadFrame) => a.gap || b.gap || a.kick || b.kick || (side === 1 && (nearRampJoin(a.x, a.z) || nearRampJoin(b.x, b.z)))
     for (const [i, end] of walk(frames, 6, skip)) {
       const a = frames[i]
       const b = frames[end]
@@ -241,9 +246,13 @@ function buildAll(): Built[] {
     const rampSrc = RAMPS.find((r) => r.sector === i) ?? null
     let ramp: Built['ramp'] = null
     if (rampSrc) {
-      const body = rampSrc.frames.slice(0, -1)
-      ramp = { deck: buildDeck(rampSrc.frames), rails: buildRails(rampSrc.frames, false) }
-      cols.push(...deckBoxes(body), ...wallBoxes(body))
+      const vis = rampSrc.frames.slice(0, rampSrc.join + 1)
+      const w0 = rampSrc.frames.findIndex((f) => f.y > 0.45)
+      const railF = rampSrc.frames.slice(w0, rampSrc.lip + 1)
+      ramp = {
+        deck: buildDeck(vis, rampSrc.halfW.slice(0, rampSrc.join + 1), 0.06),
+        rails: buildRails(railF, false, rampSrc.halfW.slice(w0, rampSrc.lip + 1), 5),
+      }
     }
     const j2 = frames.some((f, k) => k < frames.length - 1 && !f.gap && Math.abs(angDist(f.theta, J2_DEG * DEG)) < 0.04)
     return { deck, rails, cols, ramp, j2 }
@@ -251,6 +260,16 @@ function buildAll(): Built[] {
 }
 
 const J2 = j2Geo()
+const rampCols = allRampColliders()
+const guideGeo = (() => {
+  const g = rampGuideMesh()
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.BufferAttribute(g.pos, 3))
+  geo.setIndex(new THREE.BufferAttribute(g.idx, 1))
+  geo.computeBoundingSphere()
+  return geo
+})()
+const guideMat = new THREE.MeshBasicMaterial({ color: GUIDE_HEX, toneMapped: false, side: THREE.DoubleSide })
 
 export function ElevatedRing() {
   const built = useMemo(buildAll, [])
@@ -288,6 +307,16 @@ export function ElevatedRing() {
           </RigidBody>
         </group>
       ))}
+      {/* 坡面碰撞不跟扇区显隐走：对侧扇区隐藏时车还在坡上也要有地面。 */}
+      <RigidBody type="fixed" colliders={false} name="ramp-cols">
+        {rampCols.map((c, i) => (
+          <group key={i}>
+            <TrimeshCollider args={[c.deck.v, c.deck.i, TriMeshFlags.FIX_INTERNAL_EDGES] as never} friction={0.85} restitution={0} />
+            {c.wall.i.length > 0 && <TrimeshCollider args={[c.wall.v, c.wall.i]} friction={0.15} restitution={0} />}
+          </group>
+        ))}
+      </RigidBody>
+      <mesh geometry={guideGeo} material={guideMat} name="ramp-guides" />
     </>
   )
 }
