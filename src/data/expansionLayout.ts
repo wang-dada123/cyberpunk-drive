@@ -461,8 +461,8 @@ function rampHit(x: number, z: number): Surf | null {
       const abx = b.x - a.x
       const abz = b.z - a.z
       const l2 = abx * abx + abz * abz || 1
-      const t = ((x - a.x) * abx + (z - a.z) * abz) / l2
-      if (t < 0 || t > 1) continue
+      let t = ((x - a.x) * abx + (z - a.z) * abz) / l2
+      t = t < 0 ? 0 : t > 1 ? 1 : t
       const qx = a.x + abx * t
       const qz = a.z + abz * t
       const d = Math.hypot(x - qx, z - qz)

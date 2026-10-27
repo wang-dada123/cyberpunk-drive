@@ -178,6 +178,21 @@ function touchingWall(world: World, rb: RapierRigidBody) {
   }
 }
 
+/** 还在某条匝道旁边（平面 22m、高度 4m 内）时，不能把高架环的远处采样当成出界。 */
+function besideRamp(x: number, z: number, y: number) {
+  for (let r = 0; r < RAMPS.length; r++) {
+    const fs = RAMPS[r].frames
+    for (let i = 0; i < fs.length; i += 3) {
+      const f = fs[i]
+      if (f.y < 0.4) continue
+      const dx = x - f.x
+      const dz = z - f.z
+      if (dx * dx + dz * dz < 484 && Math.abs(y - f.y) < 4) return true
+    }
+  }
+  return false
+}
+
 function carForward(rot: { x: number; y: number; z: number; w: number }) {
   const { x: qx, y: qy, z: qz, w: qw } = rot
   return { x: -2 * (qx * qz + qw * qy), z: 2 * (qx * qx + qy * qy) - 1 }
@@ -238,7 +253,7 @@ export function expansionDriveStep(rb: RapierRigidBody, dt: number, world?: Worl
   // 接缝处扇区/路面会闪一下「出界」。必须持续离开路面，并且真的掉下去，才拉回。
   const dropped = t.y < last.y - 2.8
   const fell = offT > 0.5 && dropped
-  const elevOut = offT > 0.75 && !!surf && surf.kind === 'elev' && surf.lat > surf.half + 3.2 && t.y < surf.y + 2.2 && (last.kind === 'elev' || last.kind === 'ramp')
+  const elevOut = offT > 0.75 && !!surf && surf.kind === 'elev' && surf.lat > surf.half + 3.2 && t.y < last.y - 1.5 && t.y < surf.y + 2.2 && (last.kind === 'elev' || last.kind === 'ramp') && !besideRamp(t.x, t.z, t.y)
   const portOut = offT > 0.5 && last.kind === 'port' && surf?.kind === 'port' && surf.lat > 2.2 && t.y < last.y - 0.6
   const airOut = offT > 0.35 && inJumpAir(t.x, t.z) && t.y < H_HI + 1 - 2.8
   if (!(fell || elevOut || portOut || airOut)) return
