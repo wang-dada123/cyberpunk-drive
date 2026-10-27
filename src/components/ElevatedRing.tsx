@@ -7,10 +7,10 @@ import { carPose } from './Car'
 import { expansionStats } from './expansionDrive'
 import {
   ELEV_W, J2_DEG, RAMPS, RING_FRAMES, RING_PER, SECTORS,
-  angDist, angOf, frameAt, nearRampJoin, nearSpur, portWorld, yawOf,
+  angDist, angOf, frameAt, nearRampJoin, nearSpur, portWorld, underRampMesh, yawOf,
   type RoadFrame,
 } from '../data/expansionLayout'
-import { GUIDE_HEX, allRampColliders, rampGuideMesh } from '../data/rampSurface'
+import { GUIDE_HEX, allRampColliders, rampGuideMesh, rampRailSpan } from '../data/rampSurface'
 
 if (import.meta.env.DEV) Object.assign(window, { __expansion: { frameAt, yawOf, portWorld, angOf, RAMPS, RING_FRAMES, stats: expansionStats } })
 
@@ -97,7 +97,7 @@ function buildRails(frames: RoadFrame[], withPillars: boolean, halfW?: number[],
   if (withPillars) {
     for (let i = 6; i < frames.length; i += 12) {
       const f = frames[i]
-      if (f.gap || f.kick || f.base < 2.2 || nearSpur(f.x, f.z, 9) || nearRampJoin(f.x, f.z, 14)) continue
+      if (f.gap || f.kick || f.base < 2.2 || nearSpur(f.x, f.z, 9) || nearRampJoin(f.x, f.z, 14) || underRampMesh(f.x, f.z)) continue
       for (const side of [-1, 1]) {
         addBox(pos, col, idx, [f.x + f.px * side * (HW + 0.95), f.base * 0.5, f.z + f.pz * side * (HW + 0.95)], [0.65, f.base, 0.65])
       }
@@ -185,7 +185,7 @@ function walk(frames: RoadFrame[], maxStep: number, blocked: (f: RoadFrame, n: R
 
 function deckBoxes(frames: RoadFrame[]) {
   const out: ColBox[] = []
-  const gap = (a: RoadFrame, b: RoadFrame) => a.gap || b.gap
+  const gap = (a: RoadFrame, b: RoadFrame) => a.gap || b.gap || underRampMesh(a.x, a.z) || underRampMesh(b.x, b.z)
   for (const [i, end] of walk(frames, 4, gap)) {
     const kick = frames[i].kick || frames[end].kick
     if (kick && end - i > 1) {
@@ -205,7 +205,7 @@ function wallBoxes(frames: RoadFrame[]) {
   const out: ColBox[] = []
   for (const side of [-1, 1]) {
     // 内侧（side 1，px 朝圆心）在匝道汇入处断开，坡面才能开上桥。
-    const skip = (a: RoadFrame, b: RoadFrame) => a.gap || b.gap || a.kick || b.kick || (side === 1 && (nearRampJoin(a.x, a.z) || nearRampJoin(b.x, b.z)))
+    const skip = (a: RoadFrame, b: RoadFrame) => a.gap || b.gap || a.kick || b.kick || underRampMesh(a.x, a.z) || underRampMesh(b.x, b.z) || (side === 1 && (nearRampJoin(a.x, a.z) || nearRampJoin(b.x, b.z)))
     for (const [i, end] of walk(frames, 6, skip)) {
       const a = frames[i]
       const b = frames[end]
@@ -246,12 +246,13 @@ function buildAll(): Built[] {
     const rampSrc = RAMPS.find((r) => r.sector === i) ?? null
     let ramp: Built['ramp'] = null
     if (rampSrc) {
-      const vis = rampSrc.frames.slice(0, rampSrc.join + 1)
-      const w0 = rampSrc.frames.findIndex((f) => f.y > 0.45)
-      const railF = rampSrc.frames.slice(w0, rampSrc.lip + 1)
+      const vis = rampSrc.frames.slice(0, rampSrc.deckOwn + 1)
+      const [w0, railEnd] = rampRailSpan(rampSrc)
+      const railF = rampSrc.frames.slice(w0, railEnd + 1)
+      const railW = rampSrc.halfW.slice(w0, railEnd + 1).map((w) => w + 0.7)
       ramp = {
-        deck: buildDeck(vis, rampSrc.halfW.slice(0, rampSrc.join + 1), 0.06),
-        rails: buildRails(railF, false, rampSrc.halfW.slice(w0, rampSrc.lip + 1), 5),
+        deck: buildDeck(vis, rampSrc.halfW.slice(0, rampSrc.deckOwn + 1), 0.06),
+        rails: buildRails(railF, false, railW, 5),
       }
     }
     const j2 = frames.some((f, k) => k < frames.length - 1 && !f.gap && Math.abs(angDist(f.theta, J2_DEG * DEG)) < 0.04)
@@ -276,16 +277,12 @@ export function ElevatedRing() {
   const groups = useRef<(THREE.Group | null)[]>([])
   useFrame(() => {
     const a = angOf(carPose.position.x, carPose.position.z)
-    let n = 0
     for (let i = 0; i < SECTORS; i++) {
       const g = groups.current[i]
       if (!g) continue
       const mid = ((i + 0.5) / SECTORS) * Math.PI * 2
-      const on = Math.abs(angDist(a, mid)) <= SHOW
-      g.visible = on
-      if (on) n++
+      g.visible = Math.abs(angDist(a, mid)) <= SHOW
     }
-    expansionStats.sectors = n
   })
   return (
     <>

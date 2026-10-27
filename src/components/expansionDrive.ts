@@ -4,7 +4,7 @@ import { getDriveInput } from '../hooks/useControls'
 import { rings, segs, tunnelDepth, TUNNEL, TUNNEL_R1 } from '../data/mapLayout'
 import {
   H_HI, PORT_BASIS, PORT_LEN, PORT_Y, RAMPS, RING_FRAMES, SPUR, angOf, inBoostLip, inGap, inJumpAir,
-  inKicker, onSurface, portWorld, sampleSurface, yawOf, type SurfKind,
+  inKicker, onSurface, portWorld, sampleSurface, sectorOf, yawOf, type SurfKind,
 } from '../data/expansionLayout'
 
 /**
@@ -23,7 +23,7 @@ type Mem = {
   kind: SurfKind
 }
 
-export const expansionStats = { resets: 0, jumps: 0, sectors: 0 }
+export const expansionStats = { resets: 0, jumps: 0, sectors: -1, why: '' }
 
 export type StuckMem = { t: number; x: number; z: number; grace: number }
 export const freshStuck = (): StuckMem => ({ t: 0, x: 0, z: 0, grace: 0 })
@@ -32,24 +32,41 @@ let last: Mem | null = null
 let cool = 0
 let stuckMem = freshStuck()
 let armed = true
+let offT = 0
+let wallTick = 0
+let wallCache = false
+
+/** 测试换一条坡之前清掉上次路面，避免旧的 last 把车拉走。 */
+export function resetExpansionDrive() {
+  last = null
+  cool = 0
+  stuckMem = freshStuck()
+  armed = true
+  offT = 0
+  wallTick = 0
+  wallCache = false
+  expansionStats.resets = 0
+  expansionStats.jumps = 0
+  expansionStats.sectors = -1
+  expansionStats.why = ''
+}
 
 export type StuckSample = { push: boolean; crawl: boolean; tilted: boolean; wall: boolean; x: number; z: number }
 
-/** 油门且几乎不动、贴墙顶着、或车体已经歪了，持续 2s 且位移 < 2.2m → 该复位。 */
+/**
+ * 油门且几乎不动，或车体已经歪了，持续 2s 且位移 < 1.6m → 复位。
+ * 松一口气只缓慢减计时，不立刻清零：颠一下不会误复位，也不会把真卡住洗掉。
+ */
 export function stepStuck(m: StuckMem, s: StuckSample, dt: number) {
-  const hot = (s.push && s.crawl) || (s.tilted && s.crawl) || (s.wall && s.push && s.crawl)
+  const hot = (s.push && s.crawl) || (s.tilted && s.crawl)
   if (hot) {
-    if (m.t <= 0) { m.x = s.x; m.z = s.z }
+    if (m.t <= 0) { m.x = s.x; m.z = s.z; m.grace = 0 }
     m.t += dt
-    m.grace = 0.45
-  } else if (m.grace > 0 && (s.push || s.tilted) && Math.hypot(s.x - m.x, s.z - m.z) < 1.8) {
-    m.grace -= dt
-    m.t += dt
-  } else {
-    m.t = 0
+  } else if (m.t > 0) {
+    m.t = Math.max(0, m.t - dt * 0.35)
     m.grace = 0
   }
-  return m.t >= 2 - 1e-3 && Math.hypot(s.x - m.x, s.z - m.z) < 2.2
+  return m.t >= 2 - 1e-3 && Math.hypot(s.x - m.x, s.z - m.z) < 1.6
 }
 
 function roadY(x: number, z: number) {
@@ -136,6 +153,7 @@ function place(rb: RapierRigidBody, spot: DriveSpot) {
   last = { x: spot.x, y: spot.y, z: spot.z, qx: q.x, qy: q.y, qz: q.z, qw: q.w, kind: spot.kind }
   expansionStats.resets++
   stuckMem = freshStuck()
+  offT = 0
   cool = 1.1
   armed = true
 }
@@ -172,6 +190,8 @@ export function expansionDriveStep(rb: RapierRigidBody, dt: number, world?: Worl
   const th = angOf(t.x, t.z)
   const surf = sampleSurface(t.x, t.z, t.y)
   const legal = !!surf && onSurface(surf, t.y)
+  if (surf && (surf.kind === 'elev' || surf.kind === 'ramp')) expansionStats.sectors = sectorOf(th)
+  else if (!surf) expansionStats.sectors = -1
   const forward = getDriveInput().forward
 
   if (legal && surf!.kind === 'elev' && inBoostLip(th) && speed > 9 && armed) {
@@ -195,23 +215,34 @@ export function expansionDriveStep(rb: RapierRigidBody, dt: number, world?: Worl
 
   const push = Math.abs(forward) > 0.2
   const upY = 1 - 2 * (rot.x * rot.x + rot.z * rot.z)
-  const wall = !!(world && push && speed < 1.2 && touchingWall(world, rb))
-  if (stepStuck(stuckMem, { push, crawl: speed < 0.45, tilted: upY < 0.82 && speed < 1.1, wall, x: t.x, z: t.z }, dt)) {
+  // 贴墙查询隔几步做一次：每步扫接触对会在顶墙时把这一帧撑满。
+  let wall = wallCache
+  if (world && push && speed < 0.8) {
+    wallTick++
+    if (wallTick % 6 === 0) wall = wallCache = touchingWall(world, rb)
+  } else if (!push || speed >= 1.1) wall = wallCache = false
+  if (stepStuck(stuckMem, { push, crawl: speed < 0.32, tilted: upY < 0.82 && speed < 0.8, wall, x: t.x, z: t.z }, dt)) {
     const fwd = carForward(rot)
     place(rb, retreatSpot(t.x, t.z, t.y, fwd.x, fwd.z))
     return
   }
 
+  if (legal) offT = 0
+  else offT += dt
+
   if (!last) return
   const near = !!surf || inJumpAir(t.x, t.z)
-  if (!near) return
+  if (!near && offT < 0.35) return
 
   t = rb.translation()
-  const fell = !legal && t.y < last.y - 2.45
-  const elevOut = !legal && surf?.kind === 'elev' && surf.lat > surf.half + 1.8 && t.y < surf.y + 2.6 && (last.kind === 'elev' || last.kind === 'ramp')
-  const portOut = !legal && last.kind === 'port' && surf?.kind === 'port' && surf.lat > 1.2 && t.y < last.y - 0.3
-  const airOut = inJumpAir(t.x, t.z) && t.y < H_HI + 1 - 2.45
+  // 接缝处扇区/路面会闪一下「出界」。必须持续离开路面，并且真的掉下去，才拉回。
+  const dropped = t.y < last.y - 2.8
+  const fell = offT > 0.5 && dropped
+  const elevOut = offT > 0.75 && !!surf && surf.kind === 'elev' && surf.lat > surf.half + 3.2 && t.y < surf.y + 2.2 && (last.kind === 'elev' || last.kind === 'ramp')
+  const portOut = offT > 0.5 && last.kind === 'port' && surf?.kind === 'port' && surf.lat > 2.2 && t.y < last.y - 0.6
+  const airOut = offT > 0.35 && inJumpAir(t.x, t.z) && t.y < H_HI + 1 - 2.8
   if (!(fell || elevOut || portOut || airOut)) return
+  expansionStats.why = `${fell ? 'fell' : ''}${elevOut ? 'elevOut' : ''}${portOut ? 'portOut' : ''}${airOut ? 'airOut' : ''} off=${offT.toFixed(2)} y=${t.y.toFixed(2)} lastY=${last.y.toFixed(2)} kind=${surf?.kind ?? '-'} lat=${surf ? surf.lat.toFixed(1) : '-'} half=${surf ? surf.half.toFixed(1) : '-'}`
 
   rb.setTranslation({ x: last.x, y: last.y + 0.25, z: last.z }, true)
   rb.setLinvel({ x: 0, y: 0, z: 0 }, true)
@@ -219,6 +250,7 @@ export function expansionDriveStep(rb: RapierRigidBody, dt: number, world?: Worl
   rb.setRotation({ x: last.qx, y: last.qy, z: last.qz, w: last.qw }, true)
   expansionStats.resets++
   stuckMem = freshStuck()
+  offT = 0
   cool = 0.4
   armed = true
 }

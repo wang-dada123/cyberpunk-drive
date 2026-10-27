@@ -51,6 +51,7 @@ const mk = (fov: number): Pose => ({ pos: new THREE.Vector3(), look: new THREE.V
 const third = mk(T_FOV), first = mk(F_FOV), top = mk(P_FOV), from = mk(T_FOV)
 const poses: Record<CamMode, Pose> = { third, first, top }
 let tYaw = 0, fYaw = 0, transT = 1, inited = false
+let rideY = 0, rideReady = false
 
 const damp = (k: number, dt: number) => 1 - Math.exp(-k * dt)
 const clamp = THREE.MathUtils.clamp
@@ -178,14 +179,23 @@ export function FollowCamera() {
     if (inited && _pos.distanceToSquared(_prevFilt) > 100) {
       _tmp.subVectors(_pos, _prevFilt)
       for (const v of [_focus, third.pos, third.look, top.pos, top.look]) v.add(_tmp)
+      rideY += _tmp.y
       _prevFilt.copy(_pos); _focusVel.set(0, 0, 0)
     }
+    if (!rideReady) { rideY = _pos.y; rideReady = true }
+    else {
+      const dy = _pos.y - rideY
+      // 坡度这种慢变化跟得上；车身在接缝上的几厘米颠簸滤掉，镜头俯仰不再来回抽。
+      const k = Math.abs(dy) > 2.5 ? 14 : 7
+      rideY += dy * (1 - Math.exp(-k * dt))
+    }
     if (!inited) {
-      _filt.copy(_pos); _prevFilt.copy(_pos); _focus.copy(_pos); tYaw = fYaw = carYaw
+      _filt.copy(_pos); _filt.y = rideY; _prevFilt.copy(_pos); _focus.copy(_pos); tYaw = fYaw = carYaw
       inited = true
     }
-    // 共用：直接用插值后位置（不再额外低通，只保留镜头一层阻尼）、平滑速度、加速度 clamp 的跟随点
+    // 水平跟车保持原来的阻尼；高度只用平滑后的 rideY，不跟车身微小起伏。
     _filt.copy(_pos)
+    _filt.y = rideY
     _rawVel.subVectors(_filt, _prevFilt).divideScalar(Math.min(rawDt, 0.25)) // 速度用真实帧间隔
     _rawVel.y = 0; _prevFilt.copy(_filt) // 修复：此前这两句被注释吞掉，_prevFilt 从不更新
     if (!Number.isFinite(_rawVel.x + _rawVel.z)) { _rawVel.set(0, 0, 0); camStats.nan++ }
@@ -221,7 +231,7 @@ export function FollowCamera() {
     // 第一人称：刚性挂车（插值后位置），朝向只用平滑 yaw
     fYaw += wrap(carYaw - fYaw) * damp(F_K_YAW, dt)
     const sy = Math.sin(fYaw), cy = Math.cos(fYaw)
-    first.pos.set(_pos.x + F_OFFSET.x * cy + F_OFFSET.z * sy, _pos.y + F_OFFSET.y, _pos.z - F_OFFSET.x * sy + F_OFFSET.z * cy)
+    first.pos.set(_pos.x + F_OFFSET.x * cy + F_OFFSET.z * sy, rideY + F_OFFSET.y, _pos.z - F_OFFSET.x * sy + F_OFFSET.z * cy)
     first.look.set(first.pos.x - sy * F_LOOK_DIST, first.pos.y - 0.6, first.pos.z - cy * F_LOOK_DIST)
     lookQuat(first)
     first.fov += (F_FOV + F_FOV_EXTRA * Math.min(1, speed / T_SPEED_REF) - first.fov) * damp(F_K_FOV, dt)
