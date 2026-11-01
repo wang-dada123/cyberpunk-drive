@@ -6,6 +6,7 @@ import { rendererInfo } from '../utils/rendererCheck'
 import { carVisual, physStats } from './Car'
 import { expansionStats } from './expansionDrive'
 import { camState, camStats } from './FollowCamera'
+import { isMobile } from '../utils/isMobile'
 
 /**
  * ?debug 性能面板（右下角）：fps、1% low、平均/5s 最大帧时间、帧时间曲线、刷新率估计、
@@ -29,25 +30,76 @@ function hzLine() {
   return `显示器≈${disp ? disp.toFixed(0) : '?'}Hz(rAF探测) 渲染中位${med.toFixed(0)}fps${tag}\n`
 }
 
+function layoutDebug(box: HTMLDivElement, open: boolean) {
+  const w = window.innerWidth
+  const h = window.innerHeight
+  const phone = isMobile || w < 820
+  const portrait = h > w
+  // 竖屏展开时下移，躲开左上角标题和光点计数
+  const top = !phone ? 12 : open && portrait ? 148 : 64
+  const miniH = w < 820 || h < 520 ? 110 : 160
+  // 手机小地图上方还有 🗺 按钮，展开面板停在它上面
+  const miniTop = phone ? 20 + miniH + 8 + 44 : 16 + miniH
+  const maxH = Math.max(108, h - top - miniTop - 8)
+  box.dataset.open = open ? '1' : '0'
+  Object.assign(box.style, {
+    position: 'fixed', right: '12px', top: `${top}px`, bottom: 'auto', left: 'auto', zIndex: '34',
+    width: open ? (w < 820 ? 'min(232px, 54vw)' : '300px') : 'auto',
+    height: 'auto', maxHeight: open ? `${maxH}px` : 'none', overflow: open ? 'auto' : 'hidden',
+    background: 'rgba(2,6,12,0.82)', color: '#9fe6ff',
+    font: `${w < 820 ? 10 : 11}px/1.35 monospace`,
+    padding: '0', border: '1px solid #1f5f7a', pointerEvents: 'none', boxSizing: 'border-box',
+  })
+}
+
 export function PerfOverlay() {
   const gl = useThree((s) => s.gl)
   const txt = useRef<HTMLDivElement | null>(null)
   const cv = useRef<HTMLCanvasElement | null>(null)
+  const btn = useRef<HTMLButtonElement | null>(null)
+  const open = useRef(false)
   useEffect(() => {
     gl.info.autoReset = false
     const box = document.createElement('div')
-    // 手机竖屏：放右上（🎥 按钮下方），避开左下摇杆；桌面：右下
-    const narrow = window.innerWidth < 600 || window.innerHeight < 500 // 竖屏手机或横屏矮屏：右上
-    Object.assign(box.style, { position: 'fixed', right: '8px', zIndex: '30', width: narrow ? '230px' : '330px', height: narrow ? '250px' : '240px',
-      ...(narrow ? { top: '64px' } : { bottom: '8px' }), fontSize: narrow ? '9.5px' : '11px',
-      contain: 'strict', background: 'rgba(2,6,12,0.78)', color: '#9fe6ff', font: '11px/1.35 monospace',
-      padding: '6px 8px', border: '1px solid #1f5f7a', pointerEvents: 'none', boxSizing: 'border-box', overflow: 'hidden' })
-    box.style.height = narrow ? '268px' : '258px'
+    box.id = 'debug-panel'
+    const b = document.createElement('button')
+    b.id = 'debug-toggle'
+    b.type = 'button'
+    b.textContent = 'FPS --'
+    b.setAttribute('aria-label', '展开帧率面板')
+    b.setAttribute('aria-expanded', 'false')
+    Object.assign(b.style, {
+      pointerEvents: 'auto', cursor: 'pointer', display: 'block', width: '100%', textAlign: 'left',
+      background: 'transparent', color: 'inherit', border: 'none', font: 'inherit',
+      padding: '5px 8px', minWidth: '72px', minHeight: '28px',
+    })
+    const body = document.createElement('div')
+    body.style.display = 'none'
+    body.style.pointerEvents = 'none'
+    body.style.padding = '0 8px 6px'
     const t = document.createElement('div'); t.style.whiteSpace = 'pre-wrap'; t.style.wordBreak = 'break-all'
-    const c = document.createElement('canvas'); c.width = G; c.height = 100
-    box.append(t, c); document.body.appendChild(box)
-    txt.current = t; cv.current = c
-    return () => { box.remove(); gl.info.autoReset = true }
+    const c = document.createElement('canvas'); c.width = G; c.height = 72
+    c.style.display = 'block'
+    c.style.width = '100%'
+    c.style.height = '72px'
+    body.append(t, c)
+    box.append(b, body)
+    document.body.appendChild(box)
+    layoutDebug(box, false)
+    const onResize = () => layoutDebug(box, open.current)
+    b.addEventListener('click', (e) => {
+      e.stopPropagation()
+      e.preventDefault()
+      open.current = !open.current
+      body.style.display = open.current ? 'block' : 'none'
+      b.setAttribute('aria-expanded', open.current ? 'true' : 'false')
+      b.setAttribute('aria-label', open.current ? '收起帧率面板' : '展开帧率面板')
+      layoutDebug(box, open.current)
+    })
+    window.addEventListener('resize', onResize)
+    txt.current = t; cv.current = c; btn.current = b
+    if (import.meta.env.DEV) Object.assign(window, { __perf: perfStats })
+    return () => { window.removeEventListener('resize', onResize); box.remove(); gl.info.autoReset = true }
   }, [gl])
   // 整帧合计：每帧最早处先读上一帧（含后处理所有 pass）的累计值，再清零
   useFrame(() => {
@@ -83,6 +135,8 @@ export function PerfOverlay() {
     const p99 = view[Math.min(n - 1, Math.floor(n * 0.99))], med = view[n >> 1]
     perfStats.fps = 1000 / (sum / n); perfStats.low1 = 1000 / p99; perfStats.max5s = mx
     perfStats.hz = 1000 / med; perfStats.programs = gl.info.programs?.length ?? 0
+    if (btn.current) btn.current.textContent = open.current ? `收起  FPS ${perfStats.fps.toFixed(0)}` : `FPS ${perfStats.fps.toFixed(0)}`
+    if (!open.current) return
     txt.current.textContent =
       `FPS ${perfStats.fps.toFixed(1)}  1%low ${perfStats.low1.toFixed(1)}\n` +
       `avg ${(sum / n).toFixed(2)}ms  max5s ${mx.toFixed(1)}ms\n` +

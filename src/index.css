@@ -52,6 +52,24 @@ body,
   opacity: 0.75;
 }
 
+.collect {
+  margin-top: 8px;
+  font-size: 0.86rem;
+  color: #e8f4ff;
+  letter-spacing: 0.03em;
+}
+
+.collect b {
+  color: #7ec8e8;
+  font-weight: 700;
+}
+
+.collect-sub {
+  margin-top: 2px;
+  font-size: 0.72rem;
+  color: #7ec8e8;
+}
+
 .mobile-controls {
   position: absolute;
   inset: 0;

@@ -1,0 +1,16 @@
+{
+  "note": "SwiftShader 无头 Chrome 的视锥内一帧。FPS 无参考意义。刚体按扇区启用。",
+  "high": {
+    "spawn": { "calls": 84, "tris": 76881, "awake": 1 },
+    "port": { "calls": 61, "tris": 46155, "awake": 29 },
+    "elev": { "calls": 86, "tris": 75911, "resets": 0 }
+  },
+  "low": {
+    "spawn": { "calls": 56, "tris": 69855, "awake": 1 },
+    "port": { "calls": 53, "tris": 46147, "awake": 29 },
+    "elev": { "calls": 78, "tris": 75903 }
+  },
+  "dynamicBodies": 39,
+  "dynamicCap": 40,
+  "input": { "joystick": true, "keyboard": true }
+}

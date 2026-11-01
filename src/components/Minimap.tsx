@@ -75,7 +75,6 @@ export function Minimap() {
   const [big, setBig] = useState(false)
   const [eggN, setEggN] = useState(0)
   const cv = useRef<HTMLCanvasElement>(null), car = useRef<HTMLDivElement>(null), wrap = useRef<HTMLDivElement>(null)
-  const debug = new URLSearchParams(location.search).has('debug')
   const small = isMobile || window.innerHeight < 500 ? 110 : 160
   const [vw, setVw] = useState(() => Math.min(innerWidth, innerHeight))
   const px = big ? Math.round(vw * 0.86) : small
@@ -101,13 +100,13 @@ export function Minimap() {
     tick()
     return () => cancelAnimationFrame(raf)
   }, [px])
-  // 电脑：右下；开 debug 时面板占右下 230px → 上移。手机：右下（摇杆在左半屏；🎥 和 debug 面板在右上）
+  // 右下。debug 面板改到右上，这里不再为它让位。
   const pos: React.CSSProperties = big
     ? { left: '50%', top: '50%', marginLeft: -px / 2, marginTop: -px / 2 }
-    : (debug && window.innerHeight < 500 && window.innerWidth >= 600) ? { right: 250, bottom: 16 } : { right: isMobile ? 12 : 16, bottom: isMobile ? 20 : debug && window.innerWidth >= 600 ? 264 : 16 } // debug 面板（桌面右下 240px 高；横屏矮屏在右上 230px 宽）
+    : { right: isMobile ? 12 : 16, bottom: isMobile ? 20 : 16 }
   return (
     <>
-      <div ref={wrap} onClick={() => setBig((b) => !b)} style={{ position: 'fixed', ...pos, width: px, height: px, borderRadius: '50%', overflow: 'hidden', zIndex: 25,
+      <div id="minimap" ref={wrap} onClick={() => setBig((b) => !b)} style={{ position: 'fixed', ...pos, width: px, height: px, borderRadius: '50%', overflow: 'hidden', zIndex: 25,
         background: big ? 'rgba(5,10,20,0.72)' : 'rgba(5,10,20,0.8)', border: '1px solid rgba(232,244,255,0.18)', cursor: 'pointer', touchAction: 'manipulation' }}>
         <canvas ref={cv} style={{ width: px, height: px, display: 'block' }} />
         <div ref={car} style={{ position: 'absolute', left: 0, top: 0, width: 0, height: 0 }}>
