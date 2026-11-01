@@ -4,6 +4,7 @@
  */
 import RAPIER from '@dimforge/rapier3d-compat'
 import { ELEV_W, RAMPS, RING_FRAMES, frameAt, onSurface, sampleSurface, sectorOf, underRampMesh, yawOf, type Ramp } from '../src/data/expansionLayout'
+import { rampGuardBoxes } from '../src/data/guardWalls'
 import { roadClearance } from '../src/data/mapLayout'
 import { GUIDE_HEX, rampCollider, rampGuideMesh } from '../src/data/rampSurface'
 import { expansionStats, freshStuck, nearestDriveSpot, resetExpansionDrive, retreatSpot, stepStuck, expansionDriveStep } from '../src/components/expansionDrive'
@@ -246,6 +247,7 @@ function makeCar(world: RAPIER.World, x: number, y: number, z: number, yaw: numb
     body,
   )
   body.setAdditionalMass(1.2, true)
+  body.enableCcd(true)
   return body
 }
 
@@ -262,7 +264,21 @@ function worldFor(ramp: Ramp) {
     if (w) world.createCollider(w.setFriction(0.15).setRestitution(0))
   }
   addDeckBoxes(world, ramp.landAng)
+  addGuards(world, rampGuardBoxes(ramp))
   return world
+}
+
+function addGuards(world: RAPIER.World, boxes: { position: number[]; rotation: number[]; args: number[] }[]) {
+  for (const b of boxes) {
+    const yaw = b.rotation[1]
+    world.createCollider(
+      RAPIER.ColliderDesc.cuboid(b.args[0], b.args[1], b.args[2])
+        .setTranslation(b.position[0], b.position[1], b.position[2])
+        .setRotation({ x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) })
+        .setFriction(0)
+        .setRestitution(0),
+    )
+  }
 }
 
 type Trace = { ok: boolean; why: string; min: number; drop: number; resets: number }

@@ -1,7 +1,8 @@
 import type { RapierRigidBody } from '@react-three/rapier'
 import type { World } from '@dimforge/rapier3d-compat'
 import { getDriveInput } from '../hooks/useControls'
-import { rings, segs, tunnelDepth, TUNNEL, TUNNEL_R1 } from '../data/mapLayout'
+import RAPIER from '@dimforge/rapier3d-compat'
+import { rings, segs, tunnelDepth, TUNNEL, TUNNEL_R1, SPAWN } from '../data/mapLayout'
 import {
   H_HI, PORT_BASIS, PORT_LEN, PORT_Y, RAMPS, RING_FRAMES, SPUR, angOf, inBoostLip, inGap, inJumpAir,
   inKicker, onSurface, portWorld, sampleSurface, sectorOf, yawOf, type SurfKind,
@@ -35,6 +36,8 @@ let armed = true
 let offT = 0
 let wallTick = 0
 let wallCache = false
+let burst = 0
+let freeT = 0
 
 /** 测试换一条坡之前清掉上次路面，避免旧的 last 把车拉走。 */
 export function resetExpansionDrive() {
@@ -45,6 +48,8 @@ export function resetExpansionDrive() {
   offT = 0
   wallTick = 0
   wallCache = false
+  burst = 0
+  freeT = 0
   expansionStats.resets = 0
   expansionStats.jumps = 0
   expansionStats.sectors = -1
@@ -144,7 +149,74 @@ function yawQuat(yaw: number) {
   return { x: 0, y: Math.sin(h), z: 0, w: Math.cos(h) }
 }
 
-function place(rb: RapierRigidBody, spot: DriveSpot) {
+const ELEV_SAFE: DriveSpot[] = []
+const GROUND_SAFE: DriveSpot[] = []
+for (let i = 0; i < RING_FRAMES.length; i += 6) {
+  const f = RING_FRAMES[i]
+  if (f.gap || f.kick) continue
+  ELEV_SAFE.push({ x: f.x, y: f.y + 0.55, z: f.z, yaw: yawOf(f.tx, f.tz), kind: 'elev' })
+}
+for (let r = 0; r < RAMPS.length; r++) {
+  const ramp = RAMPS[r]
+  const mouth = ramp.frames[ramp.mouth]
+  GROUND_SAFE.push({ x: mouth.x, y: 0.9, z: mouth.z, yaw: yawOf(mouth.tx, mouth.tz), kind: 'ramp' })
+  for (let i = ramp.lip; i <= ramp.deckOwn; i += 5) {
+    const f = ramp.frames[i]
+    if (f.y < 2) continue
+    ELEV_SAFE.push({ x: f.x, y: f.y + 0.55, z: f.z, yaw: yawOf(f.tx, f.tz), kind: 'ramp' })
+  }
+}
+for (let i = 0; i < 24; i++) {
+  const th = (i / 24) * Math.PI * 2
+  const x = 220 * Math.cos(th)
+  const z = -220 * Math.sin(th)
+  GROUND_SAFE.push({ x, y: 0.75, z, yaw: yawOf(-Math.sin(th), -Math.cos(th)), kind: 'spur' })
+}
+const SPAWN_SPOT: DriveSpot = { x: SPAWN[0], y: SPAWN[1], z: SPAWN[2], yaw: 0, kind: 'spur' }
+GROUND_SAFE.push(SPAWN_SPOT)
+
+function nearestSpots(list: DriveSpot[], x: number, z: number, n: number) {
+  const scored = list.map((s) => ({ s, d: (s.x - x) ** 2 + (s.z - z) ** 2 }))
+  scored.sort((a, b) => a.d - b.d)
+  return scored.slice(0, n).map((e) => e.s)
+}
+
+let probe: RAPIER.Cuboid | null = null
+function spotBlocked(world: World | undefined, s: DriveSpot) {
+  if (!world) return false
+  try {
+    if (!probe) probe = new RAPIER.Cuboid(0.62, 0.4, 1.05)
+    const q = yawQuat(s.yaw)
+    const hit = world.intersectionWithShape(
+      { x: s.x, y: s.y + 0.25, z: s.z },
+      q,
+      probe,
+    )
+    return !!hit
+  } catch {
+    return false
+  }
+}
+
+function resolveSpot(world: World | undefined, list: DriveSpot[], x: number, z: number) {
+  const near = nearestSpots(list, x, z, 8)
+  for (let i = 0; i < near.length; i++) if (!spotBlocked(world, near[i])) return near[i]
+  if (!spotBlocked(world, SPAWN_SPOT)) return SPAWN_SPOT
+  return near[0] ?? SPAWN_SPOT
+}
+
+function useGround(py: number, surf: { kind: string; y: number } | null) {
+  // 人在桥下，或本来就在地面：不要送回桥面边缘。
+  if (py < 2.8) return true
+  if (last && last.y > 3.5 && py < last.y - 2.2) return true
+  return !!surf && (surf.kind === 'elev' || surf.kind === 'ramp') && py < surf.y - 2.2
+}
+
+/** 落到路面中央。掉到桥下只去地面。连续第二次复位直接去最近坡口或出生点。 */
+function place(rb: RapierRigidBody, x: number, z: number, y: number, surf: { kind: string; y: number } | null, world?: World) {
+  const fallen = useGround(y, surf)
+  const list = fallen || burst >= 1 ? GROUND_SAFE : ELEV_SAFE
+  const spot = resolveSpot(world, list, x, z)
   const q = yawQuat(spot.yaw)
   rb.setTranslation({ x: spot.x, y: spot.y, z: spot.z }, true)
   rb.setLinvel({ x: 0, y: 0, z: 0 }, true)
@@ -152,9 +224,12 @@ function place(rb: RapierRigidBody, spot: DriveSpot) {
   rb.setRotation(q, true)
   last = { x: spot.x, y: spot.y, z: spot.z, qx: q.x, qy: q.y, qz: q.z, qw: q.w, kind: spot.kind }
   expansionStats.resets++
+  expansionStats.why = fallen ? 'ground' : burst >= 1 ? 'escape' : 'center'
   stuckMem = freshStuck()
   offT = 0
-  cool = 1.1
+  freeT = 0
+  burst += 1
+  cool = 2
   armed = true
 }
 
@@ -193,11 +268,6 @@ function besideRamp(x: number, z: number, y: number) {
   return false
 }
 
-function carForward(rot: { x: number; y: number; z: number; w: number }) {
-  const { x: qx, y: qy, z: qz, w: qw } = rot
-  return { x: -2 * (qx * qz + qw * qy), z: 2 * (qx * qx + qy * qy) - 1 }
-}
-
 export function expansionDriveStep(rb: RapierRigidBody, dt: number, world?: World) {
   let t = rb.translation()
   const lv = rb.linvel()
@@ -224,9 +294,13 @@ export function expansionDriveStep(rb: RapierRigidBody, dt: number, world?: Worl
 
   const rot = rb.rotation()
   const hold = !!surf && surf.kind === 'elev' && (inKicker(th) || inGap(th))
-  if (legal && !hold && speed > 0.9 && surf) {
+  if (legal && !hold && speed > 0.9 && surf && surf.lat < 2) {
     last = { x: t.x, y: t.y, z: t.z, qx: rot.x, qy: rot.y, qz: rot.z, qw: rot.w, kind: surf.kind }
   }
+  if (legal && speed > 5 && surf && surf.lat < 2) {
+    freeT += dt
+    if (freeT > 1.5) burst = 0
+  } else freeT = Math.max(0, freeT - dt)
 
   const push = Math.abs(forward) > 0.2
   const upY = 1 - 2 * (rot.x * rot.x + rot.z * rot.z)
@@ -237,8 +311,7 @@ export function expansionDriveStep(rb: RapierRigidBody, dt: number, world?: Worl
     if (wallTick % 6 === 0) wall = wallCache = touchingWall(world, rb)
   } else if (!push || speed >= 1.1) wall = wallCache = false
   if (stepStuck(stuckMem, { push, crawl: speed < 0.32, tilted: upY < 0.82 && speed < 0.8, wall, x: t.x, z: t.z }, dt)) {
-    const fwd = carForward(rot)
-    place(rb, retreatSpot(t.x, t.z, t.y, fwd.x, fwd.z))
+    place(rb, t.x, t.z, t.y, surf, world)
     return
   }
 
@@ -250,22 +323,11 @@ export function expansionDriveStep(rb: RapierRigidBody, dt: number, world?: Worl
   if (!near && offT < 0.35) return
 
   t = rb.translation()
-  // 接缝处扇区/路面会闪一下「出界」。必须持续离开路面，并且真的掉下去，才拉回。
-  const dropped = t.y < last.y - 2.8
-  const fell = offT > 0.5 && dropped
-  const elevOut = offT > 0.75 && !!surf && surf.kind === 'elev' && surf.lat > surf.half + 3.2 && t.y < last.y - 1.5 && t.y < surf.y + 2.2 && (last.kind === 'elev' || last.kind === 'ramp') && !besideRamp(t.x, t.z, t.y)
-  const portOut = offT > 0.5 && last.kind === 'port' && surf?.kind === 'port' && surf.lat > 2.2 && t.y < last.y - 0.6
+  // 只有从桥上掉下去才拉走。地面上的低高度是正常行驶，不能当成出界。
+  const fell = offT > 0.5 && last.y > 3.5 && t.y < last.y - 2.2
+  const elevOut = offT > 0.75 && !!surf && surf.kind === 'elev' && surf.lat > surf.half + 3.2 && !!last && t.y < last.y - 1.5 && t.y < surf.y + 2.2 && (last.kind === 'elev' || last.kind === 'ramp') && !besideRamp(t.x, t.z, t.y)
+  const portOut = !!last && offT > 0.5 && last.kind === 'port' && surf?.kind === 'port' && surf.lat > 2.2 && t.y < last.y - 0.6
   const airOut = offT > 0.35 && inJumpAir(t.x, t.z) && t.y < H_HI + 1 - 2.8
   if (!(fell || elevOut || portOut || airOut)) return
-  expansionStats.why = `${fell ? 'fell' : ''}${elevOut ? 'elevOut' : ''}${portOut ? 'portOut' : ''}${airOut ? 'airOut' : ''} off=${offT.toFixed(2)} y=${t.y.toFixed(2)} lastY=${last.y.toFixed(2)} kind=${surf?.kind ?? '-'} lat=${surf ? surf.lat.toFixed(1) : '-'} half=${surf ? surf.half.toFixed(1) : '-'}`
-
-  rb.setTranslation({ x: last.x, y: last.y + 0.25, z: last.z }, true)
-  rb.setLinvel({ x: 0, y: 0, z: 0 }, true)
-  rb.setAngvel({ x: 0, y: 0, z: 0 }, true)
-  rb.setRotation({ x: last.qx, y: last.qy, z: last.qz, w: last.qw }, true)
-  expansionStats.resets++
-  stuckMem = freshStuck()
-  offT = 0
-  cool = 0.4
-  armed = true
+  place(rb, t.x, t.z, t.y, surf, world)
 }

@@ -11,6 +11,7 @@ import {
   type RoadFrame,
 } from '../data/expansionLayout'
 import { GUIDE_HEX, allRampColliders, rampGuideMesh, rampRailSpan } from '../data/rampSurface'
+import { rampGuardBoxes, ringGuardBoxes } from '../data/guardWalls'
 
 if (import.meta.env.DEV) Object.assign(window, { __expansion: { frameAt, yawOf, portWorld, angOf, RAMPS, RING_FRAMES, stats: expansionStats } })
 
@@ -201,34 +202,6 @@ function deckBoxes(frames: RoadFrame[]) {
   return out
 }
 
-function wallBoxes(frames: RoadFrame[]) {
-  const out: ColBox[] = []
-  for (const side of [-1, 1]) {
-    // 内侧（side 1，px 朝圆心）在匝道汇入处断开，坡面才能开上桥。
-    const skip = (a: RoadFrame, b: RoadFrame) => a.gap || b.gap || a.kick || b.kick || underRampMesh(a.x, a.z) || underRampMesh(b.x, b.z) || (side === 1 && (nearRampJoin(a.x, a.z) || nearRampJoin(b.x, b.z)))
-    for (const [i, end] of walk(frames, 6, skip)) {
-      const a = frames[i]
-      const b = frames[end]
-      const dx = b.x - a.x
-      const dz = b.z - a.z
-      const len = Math.hypot(dx, dz)
-      if (len < 0.35) continue
-      const px = (a.px + b.px) * 0.5
-      const pz = (a.pz + b.pz) * 0.5
-      const pl = Math.hypot(px, pz) || 1
-      const ox = (px / pl) * side * (HW + 0.22)
-      const oz = (pz / pl) * side * (HW + 0.22)
-      const base = (a.base + b.base) * 0.5
-      out.push({
-        position: [(a.x + b.x) / 2 + ox, base + 0.48, (a.z + b.z) / 2 + oz],
-        rotation: [0, Math.atan2(dx, dz), 0],
-        args: [0.18, 0.42, len / 2 + 0.3],
-      })
-    }
-  }
-  return out
-}
-
 type Built = {
   deck: THREE.BufferGeometry
   rails: THREE.BufferGeometry
@@ -242,8 +215,8 @@ function buildAll(): Built[] {
     const frames = RING_FRAMES.slice(i * RING_PER, i * RING_PER + RING_PER + 1)
     const deck = buildDeck(frames)
     const rails = buildRails(frames, true)
-    const cols = [...deckBoxes(frames), ...wallBoxes(frames)]
     const rampSrc = RAMPS.find((r) => r.sector === i) ?? null
+    const cols = [...deckBoxes(frames), ...ringGuardBoxes(frames), ...(rampSrc ? rampGuardBoxes(rampSrc) : [])]
     let ramp: Built['ramp'] = null
     if (rampSrc) {
       const vis = rampSrc.frames.slice(0, rampSrc.deckOwn + 1)
