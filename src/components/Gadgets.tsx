@@ -223,6 +223,14 @@ export function Gadgets() {
     paint(markRef.current, 1 + dashes.length, (i) => (i === 0 ? beacon : dashes[i - 1]))
   }, [beacon, dashes])
 
+  // 扇区开关放在渲染帧。物理步回调里 setEnabled 会锁死车的转向轴。
+  useFrame(() => {
+    const { x, z } = carPose.position
+    const stallWant = stallSector(x, z)
+    if (stallWant !== stallOn) { stallOn = stallWant; setBodies(stallBodies, stallWant) }
+    const garageWant = garageSector(x, z)
+    if (garageWant !== garageOn) { garageOn = garageWant; setBodies(garageBodies, garageWant) }
+  })
   useAfterPhysicsStep(() => {
     const { x, y, z } = carPose.position
     let next = getProgress()
@@ -242,10 +250,7 @@ export function Gadgets() {
     if (next !== getProgress()) setProgress(next)
 
     const stallWant = stallSector(x, z)
-    if (stallWant !== stallOn) { stallOn = stallWant; setBodies(stallBodies, stallWant) }
     const garageWant = garageSector(x, z)
-    if (garageWant !== garageOn) { garageOn = garageWant; setBodies(garageBodies, garageWant) }
-
     const sector = stallWant ? 'ai' : garageWant ? 'garage' : Math.hypot(x, z) > 200 ? 'outer' : 'city'
     gadgetStats.sector = sector
     gadgetStats.awake = 1 + portPool.awake + awakeCount(stallBodies) + awakeCount(garageBodies)
