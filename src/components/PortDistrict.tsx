@@ -2,10 +2,48 @@ import { useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { CuboidCollider, CylinderCollider, RigidBody, useAfterPhysicsStep, type RapierRigidBody } from '@react-three/rapier'
 import * as THREE from 'three'
+import { carPose } from './Car'
 import {
   CRATES, CRATE_SIZE, PORT_BASIS, PORT_LEN, PORT_RY, PORT_WID, PORT_Y, YARD_PROPS,
   dockLocal, portWorld,
 } from '../data/expansionLayout'
+
+/** 港区可撞池。离入口远时整池停用，避免占活跃刚体。 */
+export const portPool = { total: 0, displaced: 0, awake: 0 }
+if (import.meta.env.DEV) Object.assign(window, { __portPool: portPool })
+const portBodies: (RapierRigidBody | null)[] = []
+let portPlaced: { x: number; y: number; z: number; yaw: number }[] = []
+let portNear = true
+
+export function restorePortProps() {
+  for (let i = 0; i < portPlaced.length; i++) {
+    const b = portBodies[i]
+    const o = portPlaced[i]
+    if (!b || !o) continue
+    try {
+      if (!b.isValid()) continue
+      b.setTranslation({ x: o.x, y: o.y, z: o.z }, true)
+      b.setLinvel({ x: 0, y: 0, z: 0 }, true)
+      b.setAngvel({ x: 0, y: 0, z: 0 }, true)
+      const h = o.yaw * 0.5
+      b.setRotation({ x: 0, y: Math.sin(h), z: 0, w: Math.cos(h) }, true)
+    } catch { /* 刚体已释放 */ }
+  }
+}
+
+export function shovePortProps() {
+  for (let i = 0; i < portPlaced.length; i++) {
+    const b = portBodies[i]
+    const o = portPlaced[i]
+    if (!b || !o) continue
+    try {
+      if (!b.isValid()) continue
+      b.setEnabled(true)
+      b.setTranslation({ x: o.x + 2.6, y: o.y + 0.35, z: o.z + 1.7 }, true)
+      b.setLinvel({ x: 0.8, y: 0.6, z: 0.4 }, true)
+    } catch { /* 刚体已释放 */ }
+  }
+}
 
 /**
  * C7 工业港区白模。冷灰钢蓝，不做吊桥。
@@ -211,10 +249,37 @@ function PropPool() {
     im.instanceMatrix.needsUpdate = true
   }
   useLayoutEffect(() => {
+    portPlaced = placed
     paint(boxMesh.current, boxes, 0)
     paint(barMesh.current, barrels, boxCount)
-  }, [boxes, barrels, boxCount])
+  }, [boxes, barrels, boxCount, placed])
   useAfterPhysicsStep(() => {
+    const dx = carPose.position.x - center[0]
+    const dz = carPose.position.z - center[1]
+    const near = dx * dx + dz * dz < 100 * 100
+    if (near !== portNear) {
+      portNear = near
+      for (const b of portBodies) {
+        if (!b) continue
+        try { if (b.isValid() && b.isEnabled() !== near) b.setEnabled(near) } catch { /* released */ }
+      }
+    }
+    let displaced = 0
+    let awake = 0
+    for (let i = 0; i < placed.length; i++) {
+      const b = portBodies[i]
+      const o = placed[i]
+      if (!b) continue
+      try {
+        if (!b.isValid()) continue
+        if (b.isEnabled() && !b.isSleeping()) awake++
+        const t = b.translation()
+        if ((t.x - o.x) ** 2 + (t.z - o.z) ** 2 > 1.35 * 1.35) displaced++
+      } catch { /* released */ }
+    }
+    portPool.total = placed.length
+    portPool.displaced = displaced
+    portPool.awake = awake
     paint(boxMesh.current, boxes, 0)
     paint(barMesh.current, barrels, boxCount)
   })
@@ -223,7 +288,7 @@ function PropPool() {
       {placed.map((p, i) => (
         <RigidBody
           key={i}
-          ref={(b) => { bodies.current[i] = b }}
+          ref={(b) => { bodies.current[i] = b; portBodies[i] = b }}
           position={[p.x, p.y, p.z]}
           rotation={[0, p.yaw, 0]}
           colliders={false}

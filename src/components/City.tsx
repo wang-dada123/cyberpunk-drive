@@ -11,6 +11,7 @@ import { PLAZA_R, WORLD_HALF, rings, segs, roadClearance, districtAt, distSeg, r
 import { PLAY_HALF } from '../data/expansionLayout'
 import { ElevatedRing } from './ElevatedRing'
 import { PortDistrict } from './PortDistrict'
+import { Gadgets } from './Gadgets'
 import { Structures } from './Structures'
 import { Buildings, TrimStrips, measureFacades, type Prism, type Trim } from './Buildings'
 import { neonEnvTex } from '../utils/look'
@@ -507,6 +508,7 @@ export function City() {
       <Structures />
       <ElevatedRing />
       <PortDistrict />
+      <Gadgets />
       <group position={[0, 0, STREET_ORIGIN_Z]}>
         <PortfolioStreet />
       </group>
