@@ -253,17 +253,18 @@ function PropPool() {
     paint(boxMesh.current, boxes, 0)
     paint(barMesh.current, barrels, boxCount)
   }, [boxes, barrels, boxCount, placed])
-  useAfterPhysicsStep(() => {
+  // setEnabled 必须放在物理步外面。步内关掉刚体会把车的 Y 轴旋转锁死，角速度被积成 0。
+  useFrame(() => {
     const dx = carPose.position.x - center[0]
     const dz = carPose.position.z - center[1]
     const near = dx * dx + dz * dz < 100 * 100
-    if (near !== portNear) {
-      portNear = near
-      for (const b of portBodies) {
-        if (!b) continue
-        try { if (b.isValid() && b.isEnabled() !== near) b.setEnabled(near) } catch { /* released */ }
-      }
+    if (near === portNear) return
+    portNear = near
+    for (const b of portBodies) {
+      try { if (b?.isValid() && b.isEnabled() !== near) b.setEnabled(near) } catch { /* released */ }
     }
+  })
+  useAfterPhysicsStep(() => {
     let displaced = 0
     let awake = 0
     for (let i = 0; i < placed.length; i++) {
