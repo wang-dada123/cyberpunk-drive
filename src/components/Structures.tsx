@@ -41,6 +41,8 @@ const tunnelGlow = new THREE.MeshBasicMaterial({ color: dim(colors.iceBlue, 1.1)
 export const tunnelRoofMat = new THREE.MeshStandardMaterial({ color: '#0A1220', roughness: 0.6, metalness: 0.4, transparent: true, opacity: 0.92, side: THREE.DoubleSide })
 export const tunnelRoof: { current: THREE.Object3D | null } = { current: null }
 
+if (import.meta.env.DEV) Object.assign(window, { __bridge: BRIDGE })
+
 function Bridge() {
   const { c, dir, H, W, FLAT, RAMP } = BRIDGE
   const L = FLAT / 2 + RAMP

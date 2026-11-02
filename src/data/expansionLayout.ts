@@ -94,12 +94,24 @@ export function elevHeight(theta: number) {
   return H_LO
 }
 
+/**
+ * 11/2：Carroll 实测正常车速过 J1 会掉下去。桥面改成连续无缝，缺口和起跳坡都关掉。
+ * 匝道布局仍按原缺口位置留空（j1Zone），匝道几何不变。
+ */
+export const J1_OPEN = false
+
+function j1Zone(theta: number) {
+  const d = angDist(theta, J1)
+  return d >= -GAP_A / 2 - KICK_A && d < GAP_A / 2
+}
+
 export function inGap(theta: number) {
-  return Math.abs(angDist(theta, J1)) < GAP_A / 2
+  return J1_OPEN && Math.abs(angDist(theta, J1)) < GAP_A / 2
 }
 
 /** 缺口前 10m 起跳坡，沿角度增加方向 */
 export function inKicker(theta: number) {
+  if (!J1_OPEN) return false
   const d = angDist(theta, J1)
   return d >= -GAP_A / 2 - KICK_A && d < -GAP_A / 2
 }
@@ -112,11 +124,13 @@ export function kickExtra(theta: number) {
 }
 
 export function inBoostLip(theta: number) {
+  if (!J1_OPEN) return false
   const d = angDist(theta, J1)
   return d >= -GAP_A / 2 - 4 / ELEV_R && d < -GAP_A / 2
 }
 
 export function inJumpAir(x: number, z: number) {
+  if (!J1_OPEN) return false
   const th = angOf(x, z)
   const d = angDist(th, J1)
   if (d < -GAP_A / 2 - 0.01 || d > GAP_A / 2 + 10 / ELEV_R) return false
@@ -257,7 +271,7 @@ function buildRamp(deg: number): Omit<Ramp, 'deg' | 'sector'> {
     let room = 0
     for (let d = 4; d <= 210; d += 4) {
       const f = frameAt(wrapAng(landAng + s * (d / Math.max(40, landR))))
-      if (f.gap || f.kick) return room
+      if (j1Zone(f.theta)) return room
       room = d
     }
     return room

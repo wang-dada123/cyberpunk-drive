@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { CuboidCollider, RigidBody, TrimeshCollider } from '@react-three/rapier'
+import { RigidBody, TrimeshCollider } from '@react-three/rapier'
 import { TriMeshFlags } from '@dimforge/rapier3d-compat'
 import * as THREE from 'three'
 import { carPose } from './Car'
@@ -10,10 +10,10 @@ import {
   angDist, angOf, frameAt, nearRampJoin, nearSpur, portWorld, underRampMesh, yawOf,
   type RoadFrame,
 } from '../data/expansionLayout'
-import { GUIDE_HEX, allRampColliders, rampGuideMesh, rampRailSpan } from '../data/rampSurface'
-import { rampGuardBoxes, ringGuardBoxes } from '../data/guardWalls'
+import { GUIDE_HEX, allRampColliders, rampGuideMesh } from '../data/rampSurface'
+import { RAIL_LINES, railWallMesh, type RailLine } from '../data/railLines'
 
-if (import.meta.env.DEV) Object.assign(window, { __expansion: { frameAt, yawOf, portWorld, angOf, RAMPS, RING_FRAMES, stats: expansionStats } })
+if (import.meta.env.DEV) Object.assign(window, { __expansion: { RAIL_LINES, frameAt, yawOf, portWorld, angOf, RAMPS, RING_FRAMES, stats: expansionStats } })
 
 /**
  * C6 环城高架：8 扇区，对侧半环 visible=false。
@@ -72,33 +72,26 @@ function buildDeck(frames: RoadFrame[], halfW?: number[], yLift = 0.04) {
   return geo(pos, idx, col)
 }
 
-function buildRails(frames: RoadFrame[], withPillars: boolean, halfW?: number[], taperN = 0) {
+/** 护栏：沿 RAIL_LINES 折线，离路面恒定 0.06→0.9m，等高、连续、跟着弯道走。 */
+function buildRails(lines: RailLine[], pillarFrames: RoadFrame[] | null) {
   const pos: number[] = []
   const col: number[] = []
   const idx: number[] = []
-  for (const side of [-1, 1]) {
-    const map: number[] = []
-    frames.forEach((f, i) => {
-      const hw = (halfW ? halfW[i] : HW) + 0.2
-      const grow = taperN > 0 ? Math.min(1, (i + 1) / taperN) : 1
-      const x = f.x + f.px * side * hw
-      const z = f.z + f.pz * side * hw
-      const y0 = f.base + 0.06
-      const y1 = y0 + 0.84 * grow
-      map.push(pos.length / 3)
-      pos.push(x, y0, z, x, y1, z)
+  for (const line of lines) {
+    const base = pos.length / 3
+    for (const p of line.pts) {
+      pos.push(p.x, p.y + 0.06, p.z, p.x, p.y + 0.9, p.z)
       col.push(STEEL.r, STEEL.g, STEEL.b, ICE.r, ICE.g, ICE.b)
-    })
-    for (let i = 0; i < frames.length - 1; i++) {
-      if (frames[i].gap || frames[i + 1].gap || frames[i].kick || frames[i + 1].kick) continue
-      const a = map[i], b = map[i + 1]
+    }
+    for (let i = 0; i < line.pts.length - 1; i++) {
+      const a = base + i * 2, b = a + 2
       idx.push(a, b, a + 1, b, b + 1, a + 1)
     }
   }
-  if (withPillars) {
-    for (let i = 6; i < frames.length; i += 12) {
-      const f = frames[i]
-      if (f.gap || f.kick || f.base < 2.2 || nearSpur(f.x, f.z, 9) || nearRampJoin(f.x, f.z, 14) || underRampMesh(f.x, f.z)) continue
+  if (pillarFrames) {
+    for (let i = 6; i < pillarFrames.length; i += 12) {
+      const f = pillarFrames[i]
+      if (f.base < 2.2 || nearSpur(f.x, f.z, 9) || nearRampJoin(f.x, f.z, 14) || underRampMesh(f.x, f.z)) continue
       for (const side of [-1, 1]) {
         addBox(pos, col, idx, [f.x + f.px * side * (HW + 0.95), f.base * 0.5, f.z + f.pz * side * (HW + 0.95)], [0.65, f.base, 0.65])
       }
@@ -134,79 +127,10 @@ function j2Geo() {
   return geo(pos, idx)
 }
 
-type ColBox = { position: [number, number, number]; rotation: [number, number, number]; args: [number, number, number] }
-
-const _dir = new THREE.Vector3()
-const _aim = new THREE.Vector3()
-const _q = new THREE.Quaternion()
-const _e = new THREE.Euler()
-const _m = new THREE.Matrix4()
-const _uy = new THREE.Vector3()
-const _up = new THREE.Vector3(0, 1, 0)
-
-/** 盒子本地 +Z 沿弦，顶面贴在路面弦上。坡度写进朝向，避免平盒在匝道上台阶。 */
-function deckBox(a: RoadFrame, b: RoadFrame): ColBox | null {
-  const dx = b.x - a.x
-  const dy = b.y - a.y
-  const dz = b.z - a.z
-  const len = Math.hypot(dx, dy, dz)
-  if (len < 0.35) return null
-  _dir.set(dx, dy, dz).normalize()
-  _aim.copy(_dir).negate()
-  _m.lookAt(_aim, _dir, _up)
-  _q.setFromRotationMatrix(_m)
-  _e.setFromQuaternion(_q, 'XYZ')
-  _uy.set(0, 1, 0).applyQuaternion(_q)
-  const th = 0.16
-  return {
-    position: [(a.x + b.x) / 2 - _uy.x * th, (a.y + b.y) / 2 - _uy.y * th, (a.z + b.z) / 2 - _uy.z * th],
-    rotation: [_e.x, _e.y, _e.z],
-    args: [HW, th, len / 2 + 0.5],
-  }
-}
-
-function walk(frames: RoadFrame[], maxStep: number, blocked: (f: RoadFrame, n: RoadFrame) => boolean) {
-  const spans: [number, number][] = []
-  let i = 0
-  while (i < frames.length - 1) {
-    if (blocked(frames[i], frames[i + 1])) { i++; continue }
-    let end = i + 1
-    while (end < frames.length - 1 && end - i < maxStep && !blocked(frames[end], frames[end + 1])) {
-      const stepDot = frames[end].tx * frames[end + 1].tx + frames[end].tz * frames[end + 1].tz
-      if (stepDot < 0.2) break
-      const dot = frames[i].tx * frames[end + 1].tx + frames[i].tz * frames[end + 1].tz
-      if (dot < 0.992 && end - i >= 2) break
-      end++
-    }
-    spans.push([i, end])
-    i = end
-  }
-  return spans
-}
-
-function deckBoxes(frames: RoadFrame[]) {
-  const out: ColBox[] = []
-  const gap = (a: RoadFrame, b: RoadFrame) => a.gap || b.gap || underRampMesh(a.x, a.z) || underRampMesh(b.x, b.z)
-  for (const [i, end] of walk(frames, 4, gap)) {
-    const kick = frames[i].kick || frames[end].kick
-    if (kick && end - i > 1) {
-      for (let k = i; k < end; k++) {
-        const box = deckBox(frames[k], frames[k + 1])
-        if (box) out.push(box)
-      }
-    } else {
-      const box = deckBox(frames[i], frames[end])
-      if (box) out.push(box)
-    }
-  }
-  return out
-}
-
 type Built = {
   deck: THREE.BufferGeometry
   rails: THREE.BufferGeometry
-  cols: ColBox[]
-  ramp: { deck: THREE.BufferGeometry; rails: THREE.BufferGeometry } | null
+  ramp: { deck: THREE.BufferGeometry } | null
   j2: boolean
 }
 
@@ -214,27 +138,38 @@ function buildAll(): Built[] {
   return Array.from({ length: SECTORS }, (_, i) => {
     const frames = RING_FRAMES.slice(i * RING_PER, i * RING_PER + RING_PER + 1)
     const deck = buildDeck(frames)
-    const rails = buildRails(frames, true)
+    const rails = buildRails(RAIL_LINES.filter((l) => l.sector === i), frames)
     const rampSrc = RAMPS.find((r) => r.sector === i) ?? null
-    const cols = [...deckBoxes(frames), ...ringGuardBoxes(frames), ...(rampSrc ? rampGuardBoxes(rampSrc) : [])]
-    let ramp: Built['ramp'] = null
-    if (rampSrc) {
-      const vis = rampSrc.frames.slice(0, rampSrc.deckOwn + 1)
-      const [w0, railEnd] = rampRailSpan(rampSrc)
-      const railF = rampSrc.frames.slice(w0, railEnd + 1)
-      const railW = rampSrc.halfW.slice(w0, railEnd + 1).map((w) => w + 0.7)
-      ramp = {
-        deck: buildDeck(vis, rampSrc.halfW.slice(0, rampSrc.deckOwn + 1), 0.06),
-        rails: buildRails(railF, false, railW, 5),
-      }
-    }
+    const ramp: Built['ramp'] = rampSrc
+      ? { deck: buildDeck(rampSrc.frames.slice(0, rampSrc.deckOwn + 1), rampSrc.halfW.slice(0, rampSrc.deckOwn + 1), 0.06) }
+      : null
     const j2 = frames.some((f, k) => k < frames.length - 1 && !f.gap && Math.abs(angDist(f.theta, J2_DEG * DEG)) < 0.04)
-    return { deck, rails, cols, ramp, j2 }
+    return { deck, rails, ramp, j2 }
   })
 }
 
 const J2 = j2Geo()
 const rampCols = allRampColliders()
+const wallCol = railWallMesh()
+/** 桥面碰撞：与 buildDeck 同一套帧、同一宽度，法线朝上（三角绕序翻成从上往下看逆时针）。 */
+const ringCol = (() => {
+  const v: number[] = []
+  const idx: number[] = []
+  const N = RING_FRAMES.length - 1
+  for (let k = 0; k < N; k++) {
+    const f = RING_FRAMES[k]
+    for (const s of [-1, 0, 1]) v.push(f.x + f.px * s * HW, f.y, f.z + f.pz * s * HW)
+  }
+  for (let k = 0; k < N; k++) {
+    const a = k * 3, b = ((k + 1) % N) * 3
+    idx.push(a, a + 1, b, b, a + 1, b + 1)
+    idx.push(a + 1, a + 2, b + 1, b + 1, a + 2, b + 2)
+  }
+  // 绕序检查：法线 y 要朝上
+  const ax = v[3] - v[0], az = v[5] - v[2], bx = v[9] - v[0], bz = v[11] - v[2]
+  if (ax * bz - az * bx > 0) for (let t = 0; t < idx.length; t += 3) { const q = idx[t + 1]; idx[t + 1] = idx[t + 2]; idx[t + 2] = q }
+  return { v: new Float32Array(v), i: new Uint32Array(idx) }
+})()
 const guideGeo = (() => {
   const g = rampGuideMesh()
   const geo = new THREE.BufferGeometry()
@@ -267,14 +202,8 @@ export function ElevatedRing() {
           {s.ramp && (
             <>
               <mesh geometry={s.ramp.deck} material={rampMat} />
-              <mesh geometry={s.ramp.rails} material={railMat} />
             </>
           )}
-          <RigidBody type="fixed" colliders={false}>
-            {s.cols.map((c, k) => (
-              <CuboidCollider key={k} args={c.args} position={c.position} rotation={c.rotation} friction={0} restitution={0} />
-            ))}
-          </RigidBody>
         </group>
       ))}
       {/* 坡面碰撞不跟扇区显隐走：对侧扇区隐藏时车还在坡上也要有地面。 */}
@@ -282,9 +211,12 @@ export function ElevatedRing() {
         {rampCols.map((c, i) => (
           <group key={i}>
             <TrimeshCollider args={[c.deck.v, c.deck.i, TriMeshFlags.FIX_INTERNAL_EDGES] as never} friction={0.85} restitution={0} />
-            {c.wall.i.length > 0 && <TrimeshCollider args={[c.wall.v, c.wall.i]} friction={0.15} restitution={0} />}
           </group>
         ))}
+        {/* 整圈桥面：一条焊好的 trimesh，顶点与视觉网格同源，无拼缝、无盒子接头台阶 */}
+        <TrimeshCollider args={[ringCol.v, ringCol.i, TriMeshFlags.FIX_INTERNAL_EDGES] as never} friction={0.85} restitution={0} />
+        {/* 护栏墙：与视觉护栏同一折线，2.3m 高 */}
+        <TrimeshCollider args={[wallCol.v, wallCol.i]} friction={0.15} restitution={0} />
       </RigidBody>
       <mesh geometry={guideGeo} material={guideMat} name="ramp-guides" />
     </>
