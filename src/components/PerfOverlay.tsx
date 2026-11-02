@@ -30,26 +30,60 @@ function hzLine() {
   return `显示器≈${disp ? disp.toFixed(0) : '?'}Hz(rAF探测) 渲染中位${med.toFixed(0)}fps${tag}\n`
 }
 
+type R = { l: number; t: number; r: number; b: number }
+/** 面板不许盖住的东西：所有按钮、小地图、摇杆、左上标题 */
+function obstacles(box: HTMLElement, withHud: boolean): R[] {
+  const out: R[] = []
+  document.querySelectorAll<HTMLElement>(withHud ? 'button, #minimap, .joystick-base, .hud, [role="button"]' : 'button, #minimap, .joystick-base, [role="button"]').forEach((el) => {
+    if (box.contains(el)) return
+    const q = el.getBoundingClientRect()
+    if (q.width < 1 || q.height < 1) return
+    out.push({ l: q.left, t: q.top, r: q.right, b: q.bottom })
+  })
+  return out
+}
+const hit = (a: R, b: R) => a.l < b.r + 4 && a.r > b.l - 4 && a.t < b.b + 4 && a.b > b.t - 4
+
+/**
+ * 收起：一条「FPS xx」小钮，按候选位置挨个试，取第一个不碰任何按钮 / 小地图 / 摇杆 / 标题的。
+ * 展开：从小钮位置往下长，高度截到下面第一个障碍物之上，超出滚动。
+ */
 function layoutDebug(box: HTMLDivElement, open: boolean) {
   const w = window.innerWidth
   const h = window.innerHeight
   const phone = isMobile || w < 820
-  const portrait = h > w
-  // 竖屏展开时下移，躲开左上角标题和光点计数
-  const top = !phone ? 12 : open && portrait ? 148 : 64
-  const miniH = w < 820 || h < 520 ? 110 : 160
-  // 手机小地图上方还有 🗺 按钮，展开面板停在它上面
-  const miniTop = phone ? 20 + miniH + 8 + 44 : 16 + miniH
-  const maxH = Math.max(108, h - top - miniTop - 8)
-  box.dataset.open = open ? '1' : '0'
+  const width = open ? Math.min(w < 820 ? 232 : 300, Math.floor(w * 0.54)) : 0
   Object.assign(box.style, {
-    position: 'fixed', right: '12px', top: `${top}px`, bottom: 'auto', left: 'auto', zIndex: '34',
-    width: open ? (w < 820 ? 'min(232px, 54vw)' : '300px') : 'auto',
-    height: 'auto', maxHeight: open ? `${maxH}px` : 'none', overflow: open ? 'auto' : 'hidden',
+    position: 'fixed', bottom: 'auto', left: 'auto', zIndex: '34',
+    width: open ? `${width}px` : 'auto', height: 'auto', overflow: open ? 'auto' : 'hidden',
     background: 'rgba(2,6,12,0.82)', color: '#9fe6ff',
     font: `${w < 820 ? 10 : 11}px/1.35 monospace`,
     padding: '0', border: '1px solid #1f5f7a', pointerEvents: 'none', boxSizing: 'border-box',
   })
+  box.dataset.open = open ? '1' : '0'
+  const obs = obstacles(box, !open)
+  const hud = document.querySelector('.hud')?.getBoundingClientRect()
+  // 候选锚点（右上角坐标）：相机钮左边 → 相机钮下面 → 顶部居中
+  const cands: [number, number][] = phone
+    ? [[12, 66], [64, 12], [12, Math.max(12, Math.round(w / 2 - 60))], [h - 44, Math.round(w / 2 - 40)]]
+    : [[12, 12], [12, 66]]
+  if (open && phone && hud) cands.unshift([Math.round(hud.bottom + 8), 12])
+  const bw = open ? width : 84
+  let pick = cands[0]
+  let best = -1
+  for (const c of cands) {
+    const rect: R = { l: w - c[1] - bw, t: c[0], r: w - c[1], b: c[0] + (open ? 120 : 30) }
+    if (!obs.some((o) => hit(rect, o))) { pick = c; best = 1; break }
+  }
+  if (best < 0) pick = cands[0]
+  const [top, right] = pick
+  let maxH = h - top - 8
+  if (open) {
+    const span: R = { l: w - right - width, t: top, r: w - right, b: h }
+    for (const o of obs) if (o.b > top && hit(span, o)) maxH = Math.min(maxH, o.t - 8 - top)
+    maxH = Math.max(60, maxH)
+  }
+  Object.assign(box.style, { top: `${top}px`, right: `${right}px`, maxHeight: open ? `${maxH}px` : 'none' })
 }
 
 export function PerfOverlay() {
@@ -86,6 +120,7 @@ export function PerfOverlay() {
     box.append(b, body)
     document.body.appendChild(box)
     layoutDebug(box, false)
+    const later = [300, 1200, 3000].map((ms) => window.setTimeout(() => layoutDebug(box, open.current), ms))
     const onResize = () => layoutDebug(box, open.current)
     b.addEventListener('click', (e) => {
       e.stopPropagation()
@@ -99,7 +134,7 @@ export function PerfOverlay() {
     window.addEventListener('resize', onResize)
     txt.current = t; cv.current = c; btn.current = b
     if (import.meta.env.DEV) Object.assign(window, { __perf: perfStats })
-    return () => { window.removeEventListener('resize', onResize); box.remove(); gl.info.autoReset = true }
+    return () => { later.forEach(clearTimeout); window.removeEventListener('resize', onResize); box.remove(); gl.info.autoReset = true }
   }, [gl])
   // 整帧合计：每帧最早处先读上一帧（含后处理所有 pass）的累计值，再清零
   useFrame(() => {

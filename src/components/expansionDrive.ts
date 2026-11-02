@@ -216,7 +216,13 @@ function useGround(py: number, surf: { kind: string; y: number } | null) {
 function place(rb: RapierRigidBody, x: number, z: number, y: number, surf: { kind: string; y: number } | null, world?: World) {
   const fallen = useGround(y, surf)
   const list = fallen || burst >= 1 ? GROUND_SAFE : ELEV_SAFE
-  const spot = resolveSpot(world, list, x, z)
+  const base = resolveSpot(world, list, x, z)
+  // 车头朝前：沿路切线，取和原车头同向的那一头
+  const r = rb.rotation()
+  const fx = -2 * (r.x * r.z + r.w * r.y)
+  const fz = -(1 - 2 * (r.x * r.x + r.y * r.y))
+  const same = -Math.sin(base.yaw) * fx + -Math.cos(base.yaw) * fz >= 0
+  const spot = same ? base : { ...base, yaw: base.yaw + Math.PI }
   const q = yawQuat(spot.yaw)
   rb.setTranslation({ x: spot.x, y: spot.y, z: spot.z }, true)
   rb.setLinvel({ x: 0, y: 0, z: 0 }, true)
