@@ -1,11 +1,14 @@
 import { ELEV_W, RAMPS, RING_FRAMES, RING_PER, frameAt, type Ramp } from './expansionLayout'
 import { rampRailSpan } from './rampSurface'
+import { S2_BRIDGE } from './s2Bridge'
+import { SPIRAL, spiralFrame } from './mapLayout'
+import { J2_H, j2Guard } from './expansionLayout'
 
 /**
  * 护栏中线：视觉护栏和看不见的碰撞墙都从这里取同一批折线，平面位置完全一致。
  * 高架：外侧整圈不断；内侧只在匝道汇入口让开。匝道：护栏走到桥面边缘就收住，不斜插进桥面。
  */
-export type RailPt = { x: number; y: number; z: number; f: number }
+export type RailPt = { x: number; y: number; z: number; f: number; up?: number }
 export type RailLine = { pts: RailPt[]; sector: number }
 
 const HW = ELEV_W / 2
@@ -22,9 +25,10 @@ function ringLat(x: number, z: number) {
 }
 
 /** 点是否在某条匝道 lip 之后、到 stopAt 之前的车道里 */
+const LANES = [...RAMPS, S2_BRIDGE]
 function inRampLane(x: number, z: number, y: number, pad: number) {
-  for (let r = 0; r < RAMPS.length; r++) {
-    const ramp = RAMPS[r]
+  for (let r = 0; r < LANES.length; r++) {
+    const ramp = LANES[r]
     const fs = ramp.frames
     const end = rampStop[r] ?? ramp.deckOwn
     for (let i = Math.max(0, ramp.lip - 6); i < end; i++) {
@@ -45,7 +49,7 @@ function inRampLane(x: number, z: number, y: number, pad: number) {
 /** 每条匝道远侧护栏收住的帧（护栏在这之后已经贴到高架护栏线上）。 */
 const rampStop: number[] = []
 
-function rampLines(ramp: Ramp, r: number): RailLine[] {
+function rampLines(ramp: Ramp, r: number, skip?: (x: number, z: number) => boolean): RailLine[] {
   const { frames, halfW, deckOwn } = ramp
   const [w0] = rampRailSpan(ramp)
   const out: RailLine[] = []
@@ -60,6 +64,11 @@ function rampLines(ramp: Ramp, r: number): RailLine[] {
       const ring = ringLat(x, z)
       // 进到高架护栏线以内（含护栏本身）就收住：不在桥面上斜插
       const onDeck = Math.abs(ring.lat) < RING_RAIL_OFF + 0.35 && Math.abs(f.y - ring.y) < 1.6
+      if (skip && skip(x, z)) {
+        if (cur.length > 1) out.push({ pts: cur, sector: ramp.sector })
+        cur = []
+        continue
+      }
       if (f.y < 0.9 || onDeck) {
         if (cur.length > 1) { out.push({ pts: cur, sector: ramp.sector }); stopMax = Math.max(stopMax, i) }
         cur = []
@@ -92,7 +101,7 @@ function ringLines(): RailLine[] {
         const k = i % N
         if (!keep[k]) { if (cur.length > 1) out.push({ pts: cur, sector: s }); cur = []; continue }
         const f = RING_FRAMES[k]
-        cur.push({ x: f.x + f.px * side * RING_RAIL_OFF, y: f.y, z: f.z + f.pz * side * RING_RAIL_OFF, f: k })
+        cur.push({ x: f.x + f.px * side * RING_RAIL_OFF, y: f.y, z: f.z + f.pz * side * RING_RAIL_OFF, f: k, up: j2Guard(f.theta) })
       }
       if (cur.length > 1) out.push({ pts: cur, sector: s })
     }
@@ -100,17 +109,27 @@ function ringLines(): RailLine[] {
   return out
 }
 
-const rampAll = RAMPS.flatMap((r, i) => rampLines(r, i))
+/** 螺旋楼屋顶范围内不立 S2 桥护栏（屋顶自己的护栏在这里开口） */
+const spEnd = spiralFrame(SPIRAL.L)
+function onRoof(x: number, z: number) {
+  const dx = x - spEnd.p[0], dz = z - spEnd.p[1]
+  const along = dx * spEnd.T[0] + dz * spEnd.T[1]
+  const off = dx * spEnd.N[0] + dz * spEnd.N[1]
+  return along > -1 && along < SPIRAL.ROOF + 0.5 && Math.abs(off) < SPIRAL.ROOF_W / 2 - 0.02
+}
+const rampAll = [...RAMPS.flatMap((r, i) => rampLines(r, i)), ...rampLines(S2_BRIDGE, RAMPS.length, onRoof)]
 export const RAIL_LINES: RailLine[] = [...ringLines(), ...rampAll]
 
 /** 看不见的墙：同一折线竖起一面 2.3m 高、两面都挡的墙（trimesh）。 */
 export const WALL_H = 2.3
+/** J2 落地区：墙（和看得见的护栏）加高这么多，车跳起最高点也翻不过去 */
+export const J2_WALL_UP = 1.6 + J2_H
 export function railWallMesh() {
   const v: number[] = []
   const idx: number[] = []
   for (const line of RAIL_LINES) {
     const base = v.length / 3
-    for (const p of line.pts) v.push(p.x, p.y - 0.3, p.z, p.x, p.y + WALL_H, p.z)
+    for (const p of line.pts) v.push(p.x, p.y - 0.3, p.z, p.x, p.y + WALL_H + (p.up ?? 0) * J2_WALL_UP, p.z)
     for (let i = 0; i < line.pts.length - 1; i++) {
       const k = base + i * 2
       idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2)

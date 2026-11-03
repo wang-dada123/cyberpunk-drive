@@ -27,7 +27,8 @@ export const PLAY_HALF = 470
 export const MAP_R = 410
 
 export const J1_DEG = 200
-export const J2_DEG = 275
+/** 11/3：J2 落在 232°（原占位 275° 在 250° 匝道汇入车道里）。 */
+export const J2_DEG = 232
 export const GAP_M = 15
 export const KICK_M = 10
 export const KICK_H = 1.15
@@ -123,6 +124,34 @@ export function kickExtra(theta: number) {
   return KICK_H * (1 - Math.cos(Math.PI * u)) / 2
 }
 
+/**
+ * J2 跳台：桥面本身拱起一个尖顶（两侧各 J2_RUN 米，顶高 J2_H），两个方向都能起跳。
+ * 桥面、碰撞、护栏都跟着 frame.y 走，所以仍是一整条无缝 trimesh。
+ */
+export const J2_H = 0.85
+export const J2_RUN = 11
+/** 落地区（含坡）护栏加高的范围，米 */
+export const J2_GUARD = 36
+const J2A = J2_DEG * DEG
+export function j2S(theta: number) {
+  return angDist(theta, J2A) * ELEV_R
+}
+export function j2Lift(theta: number) {
+  const a = Math.abs(j2S(theta))
+  if (a >= J2_RUN) return 0
+  const u = 1 - a / J2_RUN
+  return J2_H * u * u
+}
+export function inJ2Lip(theta: number) {
+  return Math.abs(j2S(theta)) < 2.6
+}
+/** 0..1：J2 落地区护栏加高系数（两端 6m 渐变） */
+export function j2Guard(theta: number) {
+  const a = Math.abs(j2S(theta))
+  if (a >= J2_GUARD) return 0
+  return Math.min(1, (J2_GUARD - a) / 6)
+}
+
 export function inBoostLip(theta: number) {
   if (!J1_OPEN) return false
   const d = angDist(theta, J1)
@@ -169,7 +198,7 @@ export function frameAt(theta: number): RoadFrame {
   const px = tz
   const pz = -tx
   const base = elevHeight(t)
-  return { x, y: base + kickExtra(t), z, base, tx, tz, px, pz, theta: t, gap: inGap(t), kick: inKicker(t) }
+  return { x, y: base + kickExtra(t) + j2Lift(t), z, base, tx, tz, px, pz, theta: t, gap: inGap(t), kick: inKicker(t) }
 }
 
 export function yawOf(tx: number, tz: number) {
@@ -329,9 +358,12 @@ export const RAMPS: Ramp[] = RAMP_DEGS.map((deg) => ({
   ...buildRamp(deg),
 }))
 
+/** 不在四条匝道里的额外坡道（S2 桥），由 s2Bridge.ts 注册。只参与路面查询。 */
+export const EXTRA_RAMPS: Ramp[] = []
+
 /** 高架内侧护栏在汇入点附近让开，否则坡顶正对着一堵墙。 */
 export function nearRampJoin(x: number, z: number, pad = 12) {
-  for (const ramp of RAMPS) {
+  for (const ramp of [...RAMPS, ...EXTRA_RAMPS]) {
     for (const k of [ramp.lip, ramp.join]) {
       const f = ramp.frames[k]
       if (Math.hypot(x - f.x, z - f.z) < pad) return true
@@ -342,7 +374,7 @@ export function nearRampJoin(x: number, z: number, pad = 12) {
 
 /** 坡面网格自己当路的那一段（唇部到贴桥全高段）。这里不要再放桥面盒子或护栏。 */
 export function underRampMesh(x: number, z: number) {
-  for (const ramp of RAMPS) {
+  for (const ramp of [...RAMPS, ...EXTRA_RAMPS]) {
     const fs = ramp.frames
     const end = ramp.deckOwn
     const begin = Math.max(0, ramp.lip - 2)
@@ -397,7 +429,7 @@ export function expansionVirtualSegs(): { a: XZ; b: XZ; w: number; virtual: true
     const f1 = frameAt(((i + 1) / n) * Math.PI * 2)
     out.push({ a: [f0.x, f0.z], b: [f1.x, f1.z], w: 28, virtual: true })
   }
-  for (const ramp of RAMPS) {
+  for (const ramp of [...RAMPS, ...EXTRA_RAMPS]) {
     const fs = ramp.frames
     for (let i = 0; i < fs.length - 1; i += 2) {
       const j = Math.min(fs.length - 1, i + 2)
@@ -467,7 +499,7 @@ function rampHit(x: number, z: number): Surf | null {
   let pz = 0
   let tx = 0
   let tz = 1
-  for (const ramp of RAMPS) {
+  for (const ramp of [...RAMPS, ...EXTRA_RAMPS]) {
     const fs = ramp.frames
     for (let i = 0; i < fs.length - 1; i++) {
       const a = fs[i]

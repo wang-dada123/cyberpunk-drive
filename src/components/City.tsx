@@ -1,3 +1,4 @@
+import { S2_BRIDGE, S2_HALF, s2Dist } from '../data/s2Bridge'
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import { ConvexHullCollider, CuboidCollider, CylinderCollider, RigidBody } from '@react-three/rapier'
 import { Text } from '@react-three/drei'
@@ -74,6 +75,7 @@ function rng(seed: number) {
  *  楼间缝只允许 0（贴死）或 ≥8m；路口楼切 3m 角（L 形两盒）；碎块(<4m)直接去掉 */
 export const SETBACK = 1.5, MIN_GAP = 8, CHAMFER = 3
 type Rect = [number, number, number, number] // x0 x1 z0 z1
+const S2_BOX = (() => { const f = S2_BRIDGE.frames; const xs = f.map((p) => p.x), zs = f.map((p) => p.z); return [Math.min(...xs) - 20, Math.max(...xs) + 20, Math.min(...zs) - 20, Math.max(...zs) + 20] })()
 export function layoutBlocks() {
   const cells: { r: Rect; cut: [number, number] }[] = []
   const H = 5.5, STEP = 11
@@ -99,6 +101,10 @@ export function layoutBlocks() {
       // 斜路/环路/结构区：边界采样净距 ≥ 退线
       let clear = true
       for (let t = 0; t <= 1.0001 && clear; t += 1 / 11) for (const [x, z] of [[r[0] + (r[1] - r[0]) * t, r[2]], [r[0] + (r[1] - r[0]) * t, r[3]], [r[0], r[2] + (r[3] - r[2]) * t], [r[1], r[2] + (r[3] - r[2]) * t]]) if (roadClearance(x, z) < SETBACK - 0.05) { clear = false; break }
+      // S2 桥从楼群上空穿过：桥下让出一条带
+      if (clear && r[1] > S2_BOX[0] && r[0] < S2_BOX[1] && r[3] > S2_BOX[2] && r[2] < S2_BOX[3]) {
+        for (let t = 0; t <= 1.0001 && clear; t += 1 / 6) for (let u = 0; u <= 1.0001; u += 1 / 6) if (s2Dist(r[0] + (r[1] - r[0]) * t, r[2] + (r[3] - r[2]) * u, S2_BRIDGE.frames.length) < S2_HALF + 5) { clear = false; break }
+      }
       if (clear) cells.push({ r, cut: [cx, cz] })
     }
   }

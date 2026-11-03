@@ -5,8 +5,9 @@ import RAPIER from '@dimforge/rapier3d-compat'
 import { rings, segs, tunnelDepth, TUNNEL, TUNNEL_R1, SPAWN } from '../data/mapLayout'
 import {
   H_HI, PORT_BASIS, PORT_LEN, PORT_Y, RAMPS, RING_FRAMES, SPUR, angOf, inBoostLip, inGap, inJumpAir,
-  inKicker, onSurface, portWorld, sampleSurface, sectorOf, yawOf, type SurfKind,
+  inJ2Lip, inKicker, onSurface, portWorld, sampleSurface, sectorOf, yawOf, type SurfKind,
 } from '../data/expansionLayout'
+import { S2_BRIDGE } from '../data/s2Bridge'
 
 /**
  * 飞台 J1：唇部给一次向上速度。出界或掉出路面时拉回上次合法路面。
@@ -166,6 +167,10 @@ for (let r = 0; r < RAMPS.length; r++) {
     ELEV_SAFE.push({ x: f.x, y: f.y + 0.55, z: f.z, yaw: yawOf(f.tx, f.tz), kind: 'ramp' })
   }
 }
+for (let i = 8; i <= S2_BRIDGE.deckOwn; i += 5) {
+  const f = S2_BRIDGE.frames[i]
+  ELEV_SAFE.push({ x: f.x, y: f.y + 0.55, z: f.z, yaw: yawOf(f.tx, f.tz), kind: 'ramp' })
+}
 for (let i = 0; i < 24; i++) {
   const th = (i / 24) * Math.PI * 2
   const x = 220 * Math.cos(th)
@@ -261,8 +266,8 @@ function touchingWall(world: World, rb: RapierRigidBody) {
 
 /** 还在某条匝道旁边（平面 22m、高度 4m 内）时，不能把高架环的远处采样当成出界。 */
 function besideRamp(x: number, z: number, y: number) {
-  for (let r = 0; r < RAMPS.length; r++) {
-    const fs = RAMPS[r].frames
+  for (let r = 0; r <= RAMPS.length; r++) {
+    const fs = (RAMPS[r] ?? S2_BRIDGE).frames
     for (let i = 0; i < fs.length; i += 3) {
       const f = fs[i]
       if (f.y < 0.4) continue
@@ -291,7 +296,14 @@ export function expansionDriveStep(rb: RapierRigidBody, dt: number, world?: Worl
     armed = false
     expansionStats.jumps++
   }
-  if (!inKicker(th) && !inGap(th)) armed = true
+  // J2：路面鼓包顶给一次小起跳（落点区护栏已加高）
+  if (legal && surf!.kind === 'elev' && inJ2Lip(th) && speed > 9 && armed) {
+    const vy = Math.min(4.6, 2.2 + speed * 0.1)
+    rb.setLinvel({ x: lv.x, y: Math.max(lv.y, vy), z: lv.z }, true)
+    armed = false
+    expansionStats.jumps++
+  }
+  if (!inKicker(th) && !inGap(th) && !inJ2Lip(th)) armed = true
 
   if (cool > 0) {
     cool -= dt
