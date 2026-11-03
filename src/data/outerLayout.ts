@@ -4,6 +4,7 @@
  *  街坊沿主方向按 3 种标准地块（24/32/40m 面宽）切分，地块间 8m 通道；碎片（最窄 <10m 或 <220m²）丢弃。
  *  所有边都是直线 → 扇区边缘（放射路）立面笔直无锯齿；只出现 0 贴死或 ≥8m 的缝。 */
 import { segs, rings, WORLD_HALF, roadClearance } from './mapLayout'
+import { S2_BRIDGE, S2_HALF } from './s2Bridge'
 
 export type V2 = [number, number]
 export type Poly = V2[]
@@ -97,6 +98,19 @@ function gridPlots(P: Poly, u: V2, rows: [number, number][], colW: number, colOf
 }
 
 export const INNER_APOTHEM = OUTER_CHORD - PASSAGE // 内圈方格楼须落在这个正八边形内
+
+/** S2 桥走廊：沿桥中线挖一条带，楼不能顶穿桥面 */
+function cutS2(plots: Poly[]): Poly[] {
+  const fs = S2_BRIDGE.frames
+  const hw = S2_HALF + 5
+  let out = plots
+  for (let i = 0; i < fs.length - 1; i += 2) {
+    const a = fs[i], b = fs[Math.min(fs.length - 1, i + 3)]
+    out = out.flatMap((P) => subtractRect(P, segRect([a.x, a.z], [b.x, b.z], hw)))
+  }
+  return out
+}
+
 export function outerLayout(): Poly[] {
   const RO = rings.find((r) => r.r > 200)!, R1 = RO.r - RO.w / 2 - SETBACK_O, R2 = RO.r + RO.w / 2 + SETBACK_O, G = WORLD_HALF - 1.5
   let plots: Poly[] = []
@@ -117,6 +131,7 @@ export function outerLayout(): Poly[] {
   }
   for (const s of segs) plots = plots.flatMap((P) => subtractRect(P, segRect(s.a, s.b, s.w / 2 + SETBACK_O)))
   plots = plots.flatMap((P) => subtractRect(P, segRect([25, 0], [66, 0], 8.7))).flatMap((P) => subtractRect(P, segRect([76, 0], [240, 0], 10))) // AI 摊位带
+  plots = cutS2(plots)
   const ok = (P: Poly) => {
     if (minWidth(P) < 10 || area(P) < 220) return false
     for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length]; for (let t = 0; t <= 1; t += 0.1) if (roadClearance(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t) < SETBACK_O - 0.1) return false }
@@ -203,6 +218,7 @@ export function innerLayout(maxL = 50, strict = true): Poly[] {
   }
   for (const s of segs) plots = plots.flatMap((P) => subtractRect(P, segRect(s.a, s.b, s.w / 2 + SETBACK_O)))
   plots = plots.flatMap((P) => subtractRect(P, segRect([25, 0], [66, 0], 8.7))).flatMap((P) => subtractRect(P, segRect([76, 0], [240, 0], 10)))
+  plots = cutS2(plots)
   const ok = (P: Poly) => {
     if (minWidth(P) < 14 || area(P) < 400) return false
     for (const p of P) if (Math.hypot(p[0], p[1]) < 1) return false

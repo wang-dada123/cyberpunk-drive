@@ -5,6 +5,7 @@ import { Text } from '@react-three/drei'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { colors } from '../theme/colors'
+import { S2_HALF, s2Dist } from '../data/s2Bridge'
 import { BRIDGE, TUNNEL, TUNNEL_R1, bridgeHeight, tunnelDepth, eggs, GARAGE, garageRampA, garageRampB, SPIRAL, spiralH, spiralFrame } from '../data/mapLayout'
 
 /**
@@ -241,9 +242,17 @@ function Spiral() {
     // 内侧墙：螺旋段落到地面（中心芯筒封死）；屋顶段只做护栏。外侧：有上一圈覆盖/高处时离地 ≥3.5m 留净空（引道从下穿过）
     const innerBot = (s: number) => s <= L ? -0.1 : spiralH(s) - 1.2
     const outerBot = (s: number) => (s > L || spiralH(s) > 7 || s > twoPi) ? spiralH(s) - 3.5 : -0.1
+    // 外侧墙在 S2 桥出口处开口（桥自己的护栏从屋顶边缘接上）
+    const open = (s: number) => { if (s <= L) return false; const q = P(s, hw(s), 0); return s2Dist(q[0], q[2]) < S2_HALF + 1.2 }
+    const runs: number[][] = [[]]
+    for (const s of ws) { if (open(s)) { if (runs[runs.length - 1].length) runs.push([]) } else runs[runs.length - 1].push(s) }
     ribbon(walls, ws.map((s) => P(s, -hw(s), innerBot(s))), ws.map((s) => P(s, -hw(s), h(s) + 1.1)))
-    ribbon(walls, ws.map((s) => P(s, hw(s), outerBot(s))), ws.map((s) => P(s, hw(s), h(s) + 1.1)))
-    for (const k of [-1, 1]) ribbon(rails, ws.map((s) => P(s, k * hw(s) * 0.995, h(s) + 1.0)), ws.map((s) => P(s, k * hw(s) * 0.995, h(s) + 1.12)))
+    ribbon(rails, ws.map((s) => P(s, -hw(s) * 0.995, h(s) + 1.0)), ws.map((s) => P(s, -hw(s) * 0.995, h(s) + 1.12)))
+    for (const r of runs) {
+      if (r.length < 2) continue
+      ribbon(walls, r.map((s) => P(s, hw(s), outerBot(s))), r.map((s) => P(s, hw(s), h(s) + 1.1)))
+      ribbon(rails, r.map((s) => P(s, hw(s) * 0.995, h(s) + 1.0)), r.map((s) => P(s, hw(s) * 0.995, h(s) + 1.12)))
+    }
     // 径向挡墙：h=7 处，防止从外侧净空钻到低处坡底
     const s7 = ss.find((s) => spiralH(s) >= 7)!
     ribbon(walls, [P(s7, -W / 2, -0.1), P(s7, W / 2, -0.1)], [P(s7, -W / 2, spiralH(s7) - 0.3), P(s7, W / 2, spiralH(s7) - 0.3)])

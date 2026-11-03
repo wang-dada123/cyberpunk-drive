@@ -1,19 +1,21 @@
+import { S2_BRIDGE } from '../data/s2Bridge'
+import { SPIRAL, spiralFrame, spiralH } from '../data/mapLayout'
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { RigidBody, TrimeshCollider } from '@react-three/rapier'
 import { TriMeshFlags } from '@dimforge/rapier3d-compat'
 import * as THREE from 'three'
 import { carPose } from './Car'
-import { expansionStats } from './expansionDrive'
+import { expansionStats, resetExpansionDrive } from './expansionDrive'
 import {
   ELEV_W, J2_DEG, RAMPS, RING_FRAMES, RING_PER, SECTORS,
   angDist, angOf, frameAt, nearRampJoin, nearSpur, portWorld, underRampMesh, yawOf,
   type RoadFrame,
 } from '../data/expansionLayout'
-import { GUIDE_HEX, allRampColliders, rampGuideMesh } from '../data/rampSurface'
-import { RAIL_LINES, railWallMesh, type RailLine } from '../data/railLines'
+import { GUIDE_HEX, allRampColliders, rampCollider, rampGuideMesh } from '../data/rampSurface'
+import { J2_WALL_UP, RAIL_LINES, railWallMesh, type RailLine } from '../data/railLines'
 
-if (import.meta.env.DEV) Object.assign(window, { __expansion: { RAIL_LINES, frameAt, yawOf, portWorld, angOf, RAMPS, RING_FRAMES, stats: expansionStats } })
+if (import.meta.env.DEV) Object.assign(window, { __expansion: { resetDrive: resetExpansionDrive, RAIL_LINES, frameAt, yawOf, portWorld, angOf, RAMPS, RING_FRAMES, stats: expansionStats, S2: S2_BRIDGE, J2_DEG, spiral: () => { const o = []; for (let q = -SPIRAL.LEAD; q <= SPIRAL.L + SPIRAL.ROOF * 0.7; q += 1.2) { const f = spiralFrame(q); o.push({ x: f.p[0], y: Math.max(0.05, spiralH(Math.max(0, q))) + 0.02, z: f.p[1] }) } return o } } })
 
 /**
  * C6 环城高架：8 扇区，对侧半环 visible=false。
@@ -80,7 +82,7 @@ function buildRails(lines: RailLine[], pillarFrames: RoadFrame[] | null) {
   for (const line of lines) {
     const base = pos.length / 3
     for (const p of line.pts) {
-      pos.push(p.x, p.y + 0.06, p.z, p.x, p.y + 0.9, p.z)
+      pos.push(p.x, p.y + 0.06, p.z, p.x, p.y + 0.9 + (p.up ?? 0) * J2_WALL_UP, p.z)
       col.push(STEEL.r, STEEL.g, STEEL.b, ICE.r, ICE.g, ICE.b)
     }
     for (let i = 0; i < line.pts.length - 1; i++) {
@@ -116,7 +118,7 @@ function j2Geo() {
   const f = frameAt(J2_DEG * DEG)
   const pos: number[] = []
   const idx: number[] = []
-  const y = f.base + 0.08
+  const y = f.y + 0.08
   const push = (along: number, side: number) => {
     pos.push(f.x + f.tx * along + f.px * side, y, f.z + f.tz * along + f.pz * side)
   }
@@ -149,6 +151,20 @@ function buildAll(): Built[] {
 }
 
 const J2 = j2Geo()
+/** S2 桥：桥面 + 桥墩（护栏已在 RAIL_LINES 里，跟着所在扇区画） */
+const S2_DECK = (() => {
+  const r = S2_BRIDGE
+  const n = r.deckOwn + 1
+  const deck = buildDeck(r.frames.slice(0, n), r.halfW.slice(0, n), 0.06)
+  const pos: number[] = [], col: number[] = [], idx: number[] = []
+  for (let i = 10; i < r.join - 2; i += 9) {
+    const f = r.frames[i]
+    if (f.base < 2.5) continue
+    addBox(pos, col, idx, [f.x, f.base * 0.5 - 0.2, f.z], [1.1, f.base - 0.4, 1.1])
+  }
+  return { deck, piers: geo(pos, idx, col) }
+})()
+const s2Col = rampCollider(S2_BRIDGE)
 const rampCols = allRampColliders()
 const wallCol = railWallMesh()
 /** 桥面碰撞：与 buildDeck 同一套帧、同一宽度，法线朝上（三角绕序翻成从上往下看逆时针）。 */
@@ -206,6 +222,11 @@ export function ElevatedRing() {
           )}
         </group>
       ))}
+      <mesh geometry={S2_DECK.deck} material={rampMat} name="s2-deck" />
+      <mesh geometry={S2_DECK.piers} material={railMat} name="s2-piers" />
+      <RigidBody type="fixed" colliders={false} name="s2-col">
+        <TrimeshCollider args={[s2Col.deck.v, s2Col.deck.i, TriMeshFlags.FIX_INTERNAL_EDGES] as never} friction={0.85} restitution={0} />
+      </RigidBody>
       {/* 坡面碰撞不跟扇区显隐走：对侧扇区隐藏时车还在坡上也要有地面。 */}
       <RigidBody type="fixed" colliders={false} name="ramp-cols">
         {rampCols.map((c, i) => (

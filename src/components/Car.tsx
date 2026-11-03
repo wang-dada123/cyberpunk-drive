@@ -7,9 +7,13 @@ import { CapsuleCollider, CuboidCollider, RigidBody, useAfterPhysicsStep, useBef
 import * as THREE from 'three'
 import { getDriveInput } from '../hooks/useControls'
 
-const FORCE = 32 // 贴地后补偿，加速手感≈原来
+const FORCE = 37 // 1103：起步更猛（0→18 约 1.4s → 0.9s）
 const TURN = 3.2
-const MAX_SPEED = 18
+const MAX_SPEED = 21 // 1103：18 → 21（+16.7%）
+/** 高速转向衰减起点：18 以上转向角速度按 18/speed 收，弯道半径不随提速变小 */
+const TURN_FULL = 18
+/** 下压力：14 以上按超出量加一点向下冲量（不上抛时），高架坡顶/弯道不飘 */
+const DOWNFORCE = 0.35
 const STEP = 1 / 60
 
 /** 每帧物理步数 / 插值 alpha（debug 面板读） */
@@ -120,12 +124,13 @@ export function Car() {
         true,
       )
     }
+    if (speed > 14 && lv.y < 1) rb.applyImpulse({ x: 0, y: -DOWNFORCE * (speed - 14) * dt, z: 0 }, true)
 
     const moving = Math.abs(f) > 0.05 || speed > 0.4
     if (moving && turnInput !== 0) {
       const reversing = f < -0.05
       const sign = reversing ? -1 : 1
-      rb.setAngvel({ x: 0, y: TURN * turnInput * sign, z: 0 }, true)
+      rb.setAngvel({ x: 0, y: TURN * Math.min(1, TURN_FULL / Math.max(speed, 1e-3)) * turnInput * sign, z: 0 }, true)
     } else {
       const av = rb.angvel()
       rb.setAngvel({ x: 0, y: av.y * Math.pow(0.85, dt * 60), z: 0 }, true)
