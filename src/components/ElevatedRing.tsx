@@ -12,10 +12,10 @@ import {
   angDist, angOf, frameAt, nearRampJoin, nearSpur, portWorld, underRampMesh, yawOf,
   type RoadFrame,
 } from '../data/expansionLayout'
-import { GUIDE_HEX, allRampColliders, rampCollider, rampGuideMesh } from '../data/rampSurface'
+import { GUIDE_HEX, allRampColliders, laneEdges, rampCollider, rampGuideMesh } from '../data/rampSurface'
 import { J2_WALL_UP, RAIL_LINES, railWallMesh, type RailLine } from '../data/railLines'
 
-if (import.meta.env.DEV) Object.assign(window, { __expansion: { resetDrive: resetExpansionDrive, RAIL_LINES, frameAt, yawOf, portWorld, angOf, RAMPS, RING_FRAMES, stats: expansionStats, S2: S2_BRIDGE, J2_DEG, spiral: () => { const o = []; for (let q = -SPIRAL.LEAD; q <= SPIRAL.L + SPIRAL.ROOF * 0.7; q += 1.2) { const f = spiralFrame(q); o.push({ x: f.p[0], y: Math.max(0.05, spiralH(Math.max(0, q))) + 0.02, z: f.p[1] }) } return o } } })
+if (import.meta.env.DEV) Object.assign(window, { __expansion: { resetDrive: resetExpansionDrive, RAIL_LINES, laneEdges, frameAt, yawOf, portWorld, angOf, RAMPS, RING_FRAMES, stats: expansionStats, S2: S2_BRIDGE, J2_DEG, spiral: () => { const o = []; for (let q = -SPIRAL.LEAD; q <= SPIRAL.L + SPIRAL.ROOF * 0.7; q += 1.2) { const f = spiralFrame(q); o.push({ x: f.p[0], y: Math.max(0.05, spiralH(Math.max(0, q))) + 0.02, z: f.p[1] }) } return o } } })
 
 /**
  * C6 环城高架：8 扇区，对侧半环 visible=false。
@@ -48,7 +48,15 @@ function geo(pos: number[], idx: number[], col?: number[]) {
   return g
 }
 
-function buildDeck(frames: RoadFrame[], halfW?: number[], yLift = 0.04) {
+/** 点是否压在环线桥面范围内（含 0.3m 余量），返回该处环线桥面高度 */
+function ringAt(x: number, z: number) {
+  const f = frameAt(Math.atan2(-z, x))
+  if (f.gap) return null
+  const lat = (x - f.x) * f.px + (z - f.z) * f.pz
+  return Math.abs(lat) < HW + 0.3 ? { y: f.y } : null
+}
+
+function buildDeck(frames: RoadFrame[], halfW?: number[], yLift = 0.04, edges?: number[][][]) {
   const pos: number[] = []
   const col: number[] = []
   const idx: number[] = []
@@ -60,7 +68,14 @@ function buildDeck(frames: RoadFrame[], halfW?: number[], yLift = 0.04) {
     const lip = f.kick ? Math.min(1, (f.y - f.base) / 1.15) : prevGap ? 0.65 : 0
     const hw = halfW ? halfW[i] : HW
     for (const s of [-1, 0, 1]) {
-      pos.push(f.x + f.px * s * hw, Math.max(0.02, f.y) + yLift, f.z + f.pz * s * hw)
+      const e = edges && s !== 0 ? edges[s < 0 ? 0 : 1][i] : null
+      let x = e ? e[0] : f.x + f.px * s * hw, y = Math.max(0.02, e ? e[1] : f.y) + yLift, z = e ? e[2] : f.z + f.pz * s * hw
+      if (edges) {
+        // 叠在环线桥面上的匝道顶点压到环线桥面下 4cm：重叠处只看得到环线桥面，不再两层抢深度
+        const r = ringAt(x, z)
+        if (r && Math.abs(y - r.y) < 0.3) y = r.y
+      }
+      pos.push(x, y, z)
       c.copy(s === 0 ? MID : EDGE).lerp(ICE, s === 0 ? lip * 0.8 : lip * 0.35)
       col.push(c.r, c.g, c.b)
     }
@@ -143,7 +158,7 @@ function buildAll(): Built[] {
     const rails = buildRails(RAIL_LINES.filter((l) => l.sector === i), frames)
     const rampSrc = RAMPS.find((r) => r.sector === i) ?? null
     const ramp: Built['ramp'] = rampSrc
-      ? { deck: buildDeck(rampSrc.frames.slice(0, rampSrc.deckOwn + 1), rampSrc.halfW.slice(0, rampSrc.deckOwn + 1), 0.06) }
+      ? { deck: buildDeck(rampSrc.frames.slice(0, rampSrc.deckOwn + 1), rampSrc.halfW.slice(0, rampSrc.deckOwn + 1), 0.06, laneEdges(rampSrc.frames, rampSrc.halfW)) }
       : null
     const j2 = frames.some((f, k) => k < frames.length - 1 && !f.gap && Math.abs(angDist(f.theta, J2_DEG * DEG)) < 0.04)
     return { deck, rails, ramp, j2 }
@@ -155,7 +170,7 @@ const J2 = j2Geo()
 const S2_DECK = (() => {
   const r = S2_BRIDGE
   const n = r.deckOwn + 1
-  const deck = buildDeck(r.frames.slice(0, n), r.halfW.slice(0, n), 0.06)
+  const deck = buildDeck(r.frames.slice(0, n), r.halfW.slice(0, n), 0.06, laneEdges(r.frames, r.halfW))
   const pos: number[] = [], col: number[] = [], idx: number[] = []
   for (let i = 10; i < r.join - 2; i += 9) {
     const f = r.frames[i]
