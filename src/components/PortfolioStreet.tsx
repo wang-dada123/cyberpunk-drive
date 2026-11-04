@@ -41,7 +41,9 @@ const BOARD_X = 7.45 // 路缘 3.5 与楼面 3.85 之间，不压路
 const BOARD_Y = 0.5 + BOARD_H / 2
 const RING_X = 3.8
 const RING_R = 1.4
-const ZS = [-4, -16, -28, -58, -84, -92] // 世界 z -34…-122，避开环路(-75)与后巷(-104)路口
+// 世界 z -34…-125，避开环路(-75)与后巷(-104)路口。
+// 北三排错开光点触发位：手机横屏 844×390 下 8 个光点处灯箱投影离摇杆 / 小地图 ≥53px（原 -88/-122 两排压在摇杆、小地图上）
+const ZS = [-4, -16, -28, -63, -84, -95]
 
 type Slot = { x: number; z: number; side: 1 | -1; p: Exhibit }
 const slots: Slot[] = ZS.flatMap((z, k) =>
@@ -200,7 +202,8 @@ export function PortfolioStreet() {
     const m = new THREE.Matrix4().makeRotationY(STREET_ROT_Y)
     return slots.map((s) => new THREE.Vector3(s.side * RING_X, 0, s.z).applyMatrix4(m).add(new THREE.Vector3(0, 0, STREET_ORIGIN_Z)))
   }, [])
-  useFrame(() => {
+  useFrame((st) => {
+    if (import.meta.env.DEV) (window as unknown as { __cam?: THREE.Camera }).__cam = st.camera // 截图/避让脚本读相机
     const { x, z } = carPose.position
     let hit: number | null = null
     let best = RING_R * RING_R

@@ -18,18 +18,24 @@ const st = () => page.evaluate(() => {
   const r = (s) => { const e = document.querySelector(s); if (!e) return null; const q = e.getBoundingClientRect(); return q.width > 0 ? [q.left, q.top, q.right, q.bottom].map(Math.round) : null }
   const v = window.__car.linvel(), c = r('#light-card')
   const ov = (o) => !!(c && o) && c[0] < o[2] && c[2] > o[0] && c[1] < o[3] && c[3] > o[1]
-  return { title: document.querySelector('#light-card .fx-title')?.textContent ?? null, copy: document.querySelector('#light-card .fx-copy')?.textContent,
+  const px = (q) => parseFloat(getComputedStyle(document.querySelector(q) ?? document.body).fontSize)
+  return { title: document.querySelector('#light-card .fx-title')?.textContent ?? null, tag: document.querySelector('#light-card .fx-tag')?.textContent, tagPx: px('#light-card .fx-tag'), descPx: px('#light-card .fx-desc'), copy: document.querySelector('#light-card .fx-copy')?.textContent,
     bad: /待核实|占位|了解更多/.test(document.querySelector('#light-card')?.textContent ?? ''),
     over: c ? { joy: ov(r('.joystick-base')), mini: ov(r('#minimap')), fps: ov(r('#debug-panel') || r('#debug-toggle')) } : null, speed: +Math.hypot(v.x, v.z).toFixed(2) } })
 const res = []
 const check = async (k, want) => { const s = await st(); const ok = want(s); res.push(ok); console.log(ok ? 'OK ' : 'FAIL', k, JSON.stringify(s)) }
 const W = (ms) => page.waitForTimeout(ms)
-await put(-88); await W(2500); await check('light0-open', (s) => s.title === '韩立·青竹蜂云剑' && !s.bad && s.copy === '图片版权归原作者' && !Object.values(s.over).some(Boolean))
-if (!MOB) {
-  await page.keyboard.down('ArrowDown'); await W(1000); await check('drive-while-open', (s) => s.speed > 0.5 && s.title === '韩立·青竹蜂云剑'); await page.keyboard.up('ArrowDown')
-  await page.keyboard.press('Escape'); await W(500); await check('esc-close', (s) => s.title === null)
-} else {
-  await page.tap('.lc-close'); await W(500); await check('tap-close', (s) => s.title === null)
+const TITLES = ['韩立·青竹蜂云剑', '万剑归宗', '风雷翅', '静座问道', '山间读经', '御风而行', '寒夜持矛', '一剑开天']
+const LZ = [-88, -104, -120, -136, -152, -168, -184, -196]
+// 8 个光点依次：弹对卡、页眉 i/8 与计数 i+1/8 正确、页眉字号 ≥ 简介、不压摇杆/小地图/FPS、能关
+for (let i = 0; i < 8; i++) {
+  await put(LZ[i]); await W(2500)
+  await check(`light${i}-open`, (s) => s.title === TITLES[i] && !s.bad && s.copy === '图片版权归原作者' && s.tag === `国漫展厅 · ${i + 1}/8 · 光点 ${i + 1}/8` && s.tagPx >= s.descPx && !Object.values(s.over).some(Boolean))
+  if (i === 0 && !MOB) {
+    await page.keyboard.down('ArrowDown'); await W(1000); await check('drive-while-open', (s) => s.speed > 0.5 && s.title === TITLES[0]); await page.keyboard.up('ArrowDown')
+  }
+  if (MOB) await page.tap('.lc-close'); else await page.keyboard.press(i % 2 ? 'KeyE' : 'Escape')
+  await W(500); await check(`light${i}-close(${MOB ? 'tap' : i % 2 ? 'E' : 'Esc'})`, (s) => s.title === null)
 }
 await put(-104); await W(2500); await check('light1-open', (s) => s.title === '万剑归宗')
 if (!MOB) { await page.keyboard.press('KeyE'); await W(500) } else { await page.tap('.lc-close'); await W(500) }
