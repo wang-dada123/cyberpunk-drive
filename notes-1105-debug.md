@@ -4,3 +4,10 @@
 - **drive-laps 起点状态不一致是真实问题：** 传送后只睡 500ms 墙钟，分支物理时间落后时车还在下落（st0 y=0.57, vy=-0.62；main 已静止），起点就和 main 不同。dd21df8 起 drive-laps 等车落地静止再控制。
 - **新发现：PhysicsClock 阈值 0.1s 在本机不可用。** swiftshader 下正常帧就是 ~150–550ms（main 也是），0.1s 阈值让几乎每帧只补 4 步 → 分支物理只有实时的 1/3–1/10（0.8m 落体用了 2.2s），ring-lap 180s 超时、ramp20-up 复位。即"正常帧"在慢机上被改了行为，违背"main 行为不变"。
 - 结论：阈值改为 LONG_FRAME=0.25s / MAX_CATCHUP=0.25s（15 步）：≤250ms 的帧与 main（rapier 自带 0.5s 夹断）逐帧一致，只有 >250ms 的卡顿帧少补一半。
+
+## 决定（02:56）：去掉 PhysicsClock
+- 预烘图集已消除长帧；PhysicsClock 在慢机上改变正常帧行为 → 删除。Car.tsx / Scene.tsx 恢复为 ce732f0 原样。
+- 去掉前的一轮参考（PhysicsClock 0.25/0.25）：main#1 16/16 全 0 maxFrame 6163ms；branch#1 16/16 全 0 maxFrame 44631ms（机器级卡顿，main 同样出现 6–9s 帧）；main#2 14 段全 0（被中断）。
+
+### 1) 物理路径 diff
+`git diff ce732f0 -- src/components/Car* src/components/Scene.tsx src/components/Physics*` → 0 行（无差异，PhysicsClock.tsx 已删除）。

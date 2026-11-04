@@ -109,8 +109,8 @@ const result = await page.evaluate(async ([FILTER, MODES, SETTLE]) => {
     E.resetDrive?.() // 传送后清掉上一段的 last/burst，否则会误判掉落
     E.stats.resets = 0; E.stats.jumps = 0; E.stats.why = ''
     await sleep(500)
-    // 传送后等车真正落地静止再开始控制：物理时间可能落后墙钟（长帧被 rapier 0.5s 夹断 /
-    // PhysicsClock 长帧补步上限），只睡固定 500ms 时车可能还在下落，起点状态就和 main 不同。
+    // 传送后等车真正落地静止再开始控制：物理时间可能落后墙钟（
+    // 长帧被 rapier 0.5s 夹断），只睡固定 500ms 时车可能还在下落，起点状态就和 main 不同。
     const st0 = (() => { const t = rb.translation(), v = rb.linvel(); return [+t.y.toFixed(2), +v.y.toFixed(2)] })()
     let settleF = 0
     if (SETTLE) for (let ok = 0; ok < 6 && settleF < 600; settleF++) {
