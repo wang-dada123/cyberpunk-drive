@@ -9,7 +9,7 @@ export const MAX_CATCHUP = 4 / 60
 /**
  * 替代 <Physics> 自带的帧循环（Physics 设 paused，step 仍可手动调用）。
  * 正常帧（≤100ms）原样传入 → 与原先逐帧行为完全一致；
- * 长帧原先会按 0.5s 上限一次补 30 步，期间驾驶输入停在旧值，车被甩出路线撞墙卡住；现在最多补 4 步。
+ * 长帧原先会按 0.5s 上限一次补最多 30 步（期间驾驶输入不变）；现在最多补 4 步，多余时间丢弃（物理短暂变慢，不会瞬移）。
  */
 export function PhysicsClock({ priority = -50 }: { priority?: number }) {
   const { step } = useRapier()

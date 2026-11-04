@@ -1,7 +1,7 @@
 /**
  * 离线烘焙用：把 8 个凡人灯箱正面（缩略图/渐变/青玉框/云纹角/书法片名）画进一张 Canvas。
  * 运行时不再导入本文件 —— 产物是 public/exhibits/fanren-atlas.webp（node scripts/bake-atlas.mjs）。
- * 原因：Canvas 2D 书法字 + shadowBlur 在运行时绘制/上传会在行驶中产生 0.3–0.7s 长帧（见 commit 说明）。
+ * 原因：Canvas 2D 书法字 + shadowBlur 在运行时绘制/上传会在行驶中产生 0.4–0.8s 长帧（实测）。
  */
 import type { Exhibit } from '../data/exhibits'
 import { BRUSH } from './brushFont'

@@ -65,8 +65,8 @@ function boardMatrix(s: Slot, z = 0) {
   return new THREE.Matrix4().compose(new THREE.Vector3(s.x, BOARD_Y, s.z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotY), new THREE.Vector3(1, 1, 1))
     .multiply(new THREE.Matrix4().makeTranslation(0, 0, z))
 }
-/** upload：每次重绘后立刻把图集传到 GPU。Canvas 2D 的绘制是延迟光栅化的（书法字形 + shadowBlur 很重），
-   若等网格首次进视野才上传，这笔开销会落在行驶中的某一帧（实测 0.4–0.7s 长帧），物理按固定步长补帧、输入却停在旧值，车被甩上墙卡住。 */
+/** 旧实现在运行时用 Canvas 2D 画书法字 + shadowBlur 并在网格首次进视野时上传，实测造成 0.4–0.8s 长帧；
+   现改为离线 webp + 加载即 initTexture，长帧消失（≤~0.2s）。 */
 function buildBoards(gl: THREE.WebGLRenderer) {
   const faces: THREE.BufferGeometry[] = [], frames: THREE.BufferGeometry[] = []
   slots.forEach((s, i) => {

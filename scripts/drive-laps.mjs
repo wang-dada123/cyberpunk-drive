@@ -8,6 +8,7 @@ import { writeFileSync } from 'node:fs'
 const BASE = process.env.BASE || 'http://127.0.0.1:5173/cyberpunk-drive/'
 const FILTER = process.env.ONLY || ''
 const MODES = process.env.MODES || 'normal,max'
+const SETTLE = process.env.SETTLE !== "0"
 const browser = await chromium.launch({
   channel: 'chrome', headless: true,
   args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist'],
@@ -20,7 +21,7 @@ await page.waitForFunction(() => window.__car && window.__expansion && window.__
 await page.waitForTimeout(1500)
 await page.exposeFunction('__report', (r) => console.log(JSON.stringify(r)))
 
-const result = await page.evaluate(async ([FILTER, MODES]) => {
+const result = await page.evaluate(async ([FILTER, MODES, SETTLE]) => {
   const E = window.__expansion
   const car = () => window.__car
   const D = window.__drive
@@ -108,16 +109,25 @@ const result = await page.evaluate(async ([FILTER, MODES]) => {
     E.resetDrive?.() // 传送后清掉上一段的 last/burst，否则会误判掉落
     E.stats.resets = 0; E.stats.jumps = 0; E.stats.why = ''
     await sleep(500)
+    // 传送后等车真正落地静止再开始控制：物理时间可能落后墙钟（长帧被 rapier 0.5s 夹断 /
+    // PhysicsClock 长帧补步上限），只睡固定 500ms 时车可能还在下落，起点状态就和 main 不同。
+    const st0 = (() => { const t = rb.translation(), v = rb.linvel(); return [+t.y.toFixed(2), +v.y.toFixed(2)] })()
+    let settleF = 0
+    if (SETTLE) for (let ok = 0; ok < 6 && settleF < 600; settleF++) {
+      await new Promise((r) => requestAnimationFrame(r))
+      const v = rb.linvel()
+      ok = Math.abs(v.y) < 0.05 && Math.hypot(v.x, v.z) < 0.05 ? ok + 1 : 0
+    }
     const r0 = E.stats.resets
     let idx = 0, falls = 0, below = false, maxSpeed = 0, stuckT = 0, stuck = 0, minClear = 99
     const events = []
-    let lastT = performance.now(), simT = 0
+    let lastT = performance.now(), simT = 0, maxFrame = 0
     const t0 = performance.now()
     const steerK = path.steer || 2.2
     const look = path.look || 4
     while (idx < pts.length - 3) {
       await new Promise((r) => requestAnimationFrame(r))
-      const now = performance.now(); const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now; simT += dt
+      const now = performance.now(); maxFrame = Math.max(maxFrame, now - lastT); const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now; simT += dt
       if (now - t0 > 180000) { events.push('timeout'); break }
       const t = rb.translation(), q = rb.rotation(), v = rb.linvel()
       const sp = Math.hypot(v.x, v.z); maxSpeed = Math.max(maxSpeed, sp)
@@ -163,6 +173,7 @@ const result = await page.evaluate(async ([FILTER, MODES]) => {
       maxSpeed: +maxSpeed.toFixed(1), minClear: +minClear.toFixed(2),
       reached: idx >= pts.length - 4, jumps: E.stats.jumps,
       events: events.slice(0, 8), why: E.stats.why,
+      maxFrameMs: Math.round(maxFrame), st0, settleF,
     }
   }
 
@@ -184,7 +195,7 @@ const result = await page.evaluate(async ([FILTER, MODES]) => {
     }
   }
   return out
-}, [FILTER, MODES])
+}, [FILTER, MODES, SETTLE])
 
 writeFileSync(process.env.OUT || '/tmp/drive-laps.json', JSON.stringify(result, null, 1))
 await browser.close()
