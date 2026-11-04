@@ -22,8 +22,8 @@ export function ExhibitView({ ex, head, onClose, children }: { ex: Exhibit; head
   return (
     <>
       <Corner c="tl" /><Corner c="tr" /><Corner c="bl" /><Corner c="br" />
-      <div className="fx-hero">
-        <img src={ex.img} alt="" loading="lazy" decoding="async" className={ok ? 'on' : ''} onLoad={() => setOk(true)} draggable={false} />
+      <div className={ex.light ? 'fx-hero light' : 'fx-hero'}>
+        <img src={ex.img} alt="" loading="lazy" decoding="async" style={{ objectPosition: ex.focus }} className={ok ? 'on' : ''} onLoad={() => setOk(true)} draggable={false} />
         <div className="fx-shade" />
         <div className="fx-top">
           <span className="fx-tag">{head}</span>
@@ -31,7 +31,7 @@ export function ExhibitView({ ex, head, onClose, children }: { ex: Exhibit; head
         </div>
         <div className="fx-titles">
           <div className="fx-series">《{ex.series}》</div>
-          <div className="fx-title">{ex.title}</div>
+          <div className="fx-title" style={{ ['--n' as string]: [...ex.title].length }}>{ex.title}</div>
         </div>
       </div>
       <div className="fx-body">

@@ -68,7 +68,7 @@ function drawFace(g: CanvasRenderingContext2D, ox: number, oy: number, p: Exhibi
     const r = Math.max((W - 2 * m) / img.naturalWidth, (H - 2 * m) / img.naturalHeight)
     const iw = img.naturalWidth * r, ih = img.naturalHeight * r
     g.fillStyle = '#05151a'; g.fillRect(0, 0, W, H)
-    g.drawImage(img, (W - iw) / 2, (H - ih) / 2, iw, ih)
+    g.drawImage(img, (W - iw) / 2, (H - ih) / 2, iw, ih) // 缩略图已按 focus 裁好
   } else {
     const bg = g.createLinearGradient(0, 0, W * 0.4, H)
     bg.addColorStop(0, '#1F7A68'); bg.addColorStop(0.55, '#0C3332'); bg.addColorStop(1, '#05151A')
@@ -76,7 +76,8 @@ function drawFace(g: CanvasRenderingContext2D, ox: number, oy: number, p: Exhibi
   }
   // 暗色渐变：上浅下深，保证片名可读
   const sh = g.createLinearGradient(0, 0, 0, H)
-  sh.addColorStop(0, 'rgba(3,12,14,0.35)'); sh.addColorStop(0.45, 'rgba(3,12,14,0.05)'); sh.addColorStop(0.72, 'rgba(4,14,18,0.75)'); sh.addColorStop(1, 'rgba(4,14,18,0.96)')
+  const L = p.light ? 1 : 0 // 白底水墨压得更重
+  sh.addColorStop(0, `rgba(3,12,14,${0.35 + L * 0.25})`); sh.addColorStop(0.45, `rgba(3,12,14,${0.05 + L * 0.2})`); sh.addColorStop(0.66, `rgba(4,14,18,${0.75 + L * 0.15})`); sh.addColorStop(1, 'rgba(4,14,18,0.97)')
   g.fillStyle = sh; g.fillRect(0, 0, W, H)
   // 青玉双框
   g.strokeStyle = JADE; g.shadowColor = GLOW; g.shadowBlur = 8
@@ -99,7 +100,7 @@ function drawFace(g: CanvasRenderingContext2D, ox: number, oy: number, p: Exhibi
   g.textAlign = 'center'; g.textBaseline = 'middle'
   g.fillStyle = JADE; g.font = font(0.2 * S); g.shadowColor = GLOW; g.shadowBlur = 6
   g.fillText(`《${p.series}》`, W / 2, H - 1.28 * S)
-  const n = [...p.title].length, size = Math.min(0.62, 2.4 / n) * S
+  const n = [...p.title].length, size = Math.min(0.62, 2.5 / n) * S
   g.font = font(size); g.fillStyle = '#F2FFF9'; g.shadowBlur = 14
   g.fillText(p.title, W / 2, H - 0.72 * S)
   g.shadowBlur = 0
@@ -231,7 +232,7 @@ export function PortfolioOverlay() {
       {!isOpen && (
         <div className="fx-card fx-mini" onClick={() => setOpen(true)} role="button">
           <div className="fx-tag">凡人灯箱</div>
-          <div className="fx-title">{p.title}</div>
+          <div className="fx-title" style={{ ['--n' as string]: [...p.title].length }}>{p.title}</div>
           <div className="fx-hint" style={{ display: 'block' }}>按 E / 点按查看</div>
         </div>
       )}

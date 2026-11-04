@@ -2,10 +2,12 @@
  * 凡人展厅壁纸 → public/exhibits/fanren-01..08.webp（卡片，≤960px 宽，≤200KB）
  *                + fanren-0N-thumb.webp（灯箱，256×384 竖幅裁切，≤30KB）
  * 用法：node scripts/prep-exhibits.mjs a.jpg b.png ... （8 张，按光点 0–7 顺序）
+ *       node scripts/prep-exhibits.mjs --dir /workspace/cyberpunk-art/fanren-src   （读 fanren-01..08.png/jpg/webp）
+ * 灯箱缩略图按 src/data/exhibits.ts 里每张的 focus（object-position）裁切，和卡片焦点一致。
  *       node scripts/prep-exhibits.mjs --placeholder   （生成青绿渐变占位图）
  */
 import sharp from 'sharp'
-import { mkdirSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const OUT = fileURLToPath(new URL('../public/exhibits/', import.meta.url))
@@ -33,14 +35,27 @@ function placeholderSvg(i) {
 <rect width="${W}" height="${H}" fill="url(#g)"/><rect width="${W}" height="${H}" fill="url(#m)"/>${peaks}</svg>`)
 }
 
-const args = process.argv.slice(2)
+let args = process.argv.slice(2)
 const ph = args[0] === '--placeholder'
+if (args[0] === '--dir') {
+  const d = args[1]
+  args = Array.from({ length: 8 }, (_, i) => ['png', 'jpg', 'jpeg', 'webp'].map((e) => `${d}/fanren-0${i + 1}.${e}`).find(existsSync) ?? `${d}/fanren-0${i + 1}.png`)
+}
+// 焦点：exhibits.ts 里 ex(..., 'X% Y%')
+const FOCUS = [...readFileSync(new URL('../src/data/exhibits.ts', import.meta.url), 'utf8').matchAll(/ex\((\d+),[^\n]*'(\d+)% (\d+)%'/g)]
+  .reduce((o, m) => (o[+m[1]] = [+m[2] / 100, +m[3] / 100], o), {})
+async function focusThumb(src, i, W = 256, H = 384) {
+  const m = await src.clone().metadata()
+  const r = Math.max(W / m.width, H / m.height), sw = Math.round(m.width * r), sh = Math.round(m.height * r)
+  const [fx, fy] = FOCUS[i] ?? [0.5, 0.5]
+  return sharp(await src.clone().resize(sw, sh).toBuffer()).extract({ left: Math.round((sw - W) * fx), top: Math.round((sh - H) * fy), width: W, height: H })
+}
 if (!ph && args.length !== 8) { console.error('需要 8 张图（按光点 0–7 顺序），或 --placeholder'); process.exit(1) }
 for (let i = 0; i < 8; i++) {
   const n = String(i + 1).padStart(2, '0')
   const src = sharp(ph ? placeholderSvg(i) : args[i]).rotate()
-  const card = src.clone().resize({ width: 960, height: 720, fit: 'inside', withoutEnlargement: true })
-  const thumb = src.clone().resize(256, 384, { fit: 'cover', position: ph ? 'centre' : 'attention' })
+  const card = src.clone().resize({ width: 960, height: 1280, fit: 'inside', withoutEnlargement: true })
+  const thumb = await focusThumb(src, i)
   const a = await fit(card, CARD_MAX, `${OUT}fanren-${n}.webp`)
   const b = await fit(thumb, THUMB_MAX, `${OUT}fanren-${n}-thumb.webp`)
   const m = await sharp(`${OUT}fanren-${n}.webp`).metadata()

@@ -13,24 +13,29 @@ export type Exhibit = {
   img: string
   /** 灯箱缩略图（256×384，≤30KB），靠近作品街时低优先级加载 */
   thumb: string
+  /** 卡片 object-fit: cover 的焦点（object-position），保证人物脸不被裁掉；prep-exhibits 裁灯箱缩略图也读这里 */
+  focus: string
+  /** 白底水墨图：加重暗色渐变压住文字区 */
+  light?: boolean
 }
 
 export const SERIES = '凡人修仙传'
 const BASE = import.meta.env.BASE_URL
-const ex = (lightId: number, title: string, kind: string, summary: string): Exhibit => {
+const ex = (lightId: number, title: string, kind: string, summary: string, focus: string, light = false): Exhibit => {
   const n = String(lightId + 1).padStart(2, '0')
-  return { lightId, series: SERIES, title, kind, summary, img: `${BASE}exhibits/fanren-${n}.webp`, thumb: `${BASE}exhibits/fanren-${n}-thumb.webp` }
+  return { lightId, series: SERIES, title, kind, summary, img: `${BASE}exhibits/fanren-${n}.webp`, thumb: `${BASE}exhibits/fanren-${n}-thumb.webp`, focus, light }
 }
 
+/** 原图：01/03/04/08 横图，02/06 近方图，05（竖）/07（竖）。标题按画面起名。 */
 export const EXHIBITS: Exhibit[] = [
-  ex(0, '韩立', '人物', '出身山村的少年修士，本作主角'),
-  ex(1, '七玄门', '门派', '江湖门派，修仙之路的起点'),
-  ex(2, '黄枫谷', '宗门', '越国修仙宗门之一'),
-  ex(3, '血色禁地', '秘境', '宗门弟子的试炼之地'),
-  ex(4, '乱星海', '地域', '星罗棋布的海外修仙群岛'),
-  ex(5, '虚天殿', '秘境', '乱星海中的上古殿府'),
-  ex(6, '落云宗', '宗门', '天南修仙宗门'),
-  ex(7, '灵界', '界域', '人界之上的广阔天地'),
+  ex(0, '韩立·青竹蜂云剑', '人物', '持剑而立，青金灵光环身', '40% 30%'),
+  ex(1, '万剑归宗', '场景', '万剑悬空，青色灵光汇于一点', '50% 40%'),
+  ex(2, '风雷翅', '人物', '身后展开风雷双翅，雷光流转', '38% 30%'),
+  ex(3, '静座问道', '水墨', '栏前静坐，远山留白', '50% 55%', true),
+  ex(4, '山间读经', '人物', '竹屋檐下执卷而读', '50% 12%'),
+  ex(5, '御风而行', '水墨', '衣袂翻飞，凌空于群山之上', '52% 6%', true),
+  ex(6, '寒夜持矛', '人物', '风雪夜色中持矛而立', '50% 22%'),
+  ex(7, '一剑开天', '人物', '御剑出招，青锋破空', '56% 22%'),
 ]
 
 export const exhibitFor = (lightId: number) => EXHIBITS.find((e) => e.lightId === lightId) ?? null
