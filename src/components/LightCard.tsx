@@ -74,7 +74,7 @@ export function LightCard() {
       <div className="pf-title">{it.title}</div>
       <div className="pf-desc">{it.summary}</div>
       <div className="pf-label">出品方 / 年份</div>
-      <div className="pf-desc">{it.studioYear}</div>
+      <div className="pf-desc">{it.studioYear || '待核实'}</div>
       <a className="lc-link" href={it.link} tabIndex={-1} onClick={(e) => { if (it.link === '#') e.preventDefault() }}>了解更多{it.link === '#' ? '（【占位】链接 #）' : ''}</a>
       <div className="pf-hint lc-hint">Esc / E 关闭 · 继续驾驶不受影响</div>
     </div>
