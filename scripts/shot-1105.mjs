@@ -1,8 +1,8 @@
 /**
- * 1105 凡人卡片样式截图（可重复跑；壁纸到了先 prep-exhibits 再 npm run build，再跑本脚本）
+ * 1105 凡人卡片样式截图（可重复跑；换图先跑 prep-exhibits，再跑本脚本）
  * 输出 /workspace/cyberpunk-art/send-shots/1105-fanren-cards/：
  *   1105-phone-land-card.png（844×390）  1105-phone-land-street.png（844×390）  1105-desktop-card.png（1440×900）
- * 默认自起 vite preview（dist）于 5176；也可 BASE=http://127.0.0.1:5173/cyberpunk-drive/ 指向 dev server。
+ * 默认自起 vite dev server 于 5176（window.__car 只在 DEV 暴露）；也可 BASE=http://127.0.0.1:5173/cyberpunk-drive/ 指向 dev server。
  * ?shot 关掉 SwiftShader 软件渲染提示条；脚本再兜底删除 #hw-accel-tip。
  */
 import { chromium } from 'playwright'
@@ -13,7 +13,7 @@ const OUT = process.env.OUT || '/workspace/cyberpunk-art/send-shots/1105-fanren-
 mkdirSync(OUT, { recursive: true })
 let srv = null, BASE = process.env.BASE
 if (!BASE) {
-  srv = spawn('npx', ['vite', 'preview', '--port', '5176', '--strictPort', '--host', '127.0.0.1'], { stdio: 'ignore', detached: true })
+  srv = spawn('npx', ['vite', '--port', '5176', '--strictPort', '--host', '127.0.0.1'], { stdio: 'ignore', detached: true })
   BASE = 'http://127.0.0.1:5176/cyberpunk-drive/'
   for (let i = 0; i < 60; i++) { try { if ((await fetch(BASE)).ok) break } catch { /* wait */ } await new Promise((r) => setTimeout(r, 500)) }
 }
@@ -25,7 +25,7 @@ async function open(mobile, W, H) {
   const page = await ctx.newPage()
   page.on('pageerror', (e) => console.log('pageerror', e.message))
   await page.goto(BASE + '?debug&shot', { waitUntil: 'domcontentloaded', timeout: 90000 })
-  await page.waitForFunction(() => window.__car && window.__expansion, { timeout: 90000 })
+  await page.waitForFunction(() => window.__car && window.__expansion, null, { timeout: 120000 })
   await page.waitForTimeout(5000)
   return { ctx, page }
 }
@@ -55,7 +55,7 @@ try {
     await page.screenshot({ path: `${OUT}/1105-phone-land-card.png` })
     // 街景：作品街南口朝北，看两侧凡人灯箱（等缩略图懒加载到齐）
     await page.keyboard.press('Escape')
-    await put(page, 0, -14, 0); await page.waitForTimeout(5000)
+    await put(page, 0, -27, 0); await page.waitForTimeout(5000)
     report('phone-street', await info(page))
     await page.screenshot({ path: `${OUT}/1105-phone-land-street.png` })
     await ctx.close()
