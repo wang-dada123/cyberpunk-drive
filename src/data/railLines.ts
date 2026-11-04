@@ -1,5 +1,5 @@
 import { ELEV_W, RAMPS, RING_FRAMES, RING_PER, frameAt, type Ramp } from './expansionLayout'
-import { rampRailSpan } from './rampSurface'
+import { laneEdges, rampRailSpan } from './rampSurface'
 import { S2_BRIDGE } from './s2Bridge'
 import { SPIRAL, spiralFrame } from './mapLayout'
 import { J2_H, j2Guard } from './expansionLayout'
@@ -9,7 +9,7 @@ import { J2_H, j2Guard } from './expansionLayout'
  * 高架：外侧整圈不断；内侧只在匝道汇入口让开。匝道：护栏走到桥面边缘就收住，不斜插进桥面。
  */
 export type RailPt = { x: number; y: number; z: number; f: number; up?: number }
-export type RailLine = { pts: RailPt[]; sector: number }
+export type RailLine = { pts: RailPt[]; sector: number; lane?: number; side?: number }
 
 const HW = ELEV_W / 2
 /** 护栏中线离路面中线 */
@@ -65,19 +65,22 @@ function rampLines(ramp: Ramp, r: number, skip?: (x: number, z: number) => boole
       // 进到高架护栏线以内（含护栏本身）就收住：不在桥面上斜插
       const onDeck = Math.abs(ring.lat) < RING_RAIL_OFF + 0.35 && Math.abs(f.y - ring.y) < 1.6
       if (skip && skip(x, z)) {
-        if (cur.length > 1) out.push({ pts: cur, sector: ramp.sector })
+        if (cur.length > 1) out.push({ pts: cur, sector: ramp.sector, side })
         cur = []
         continue
       }
       if (f.y < 0.9 || onDeck) {
-        if (cur.length > 1) { out.push({ pts: cur, sector: ramp.sector }); stopMax = Math.max(stopMax, i) }
+        if (cur.length > 1) { out.push({ pts: cur, sector: ramp.sector, side }); stopMax = Math.max(stopMax, i) }
         cur = []
         if (onDeck) break
         continue
       }
+      // 急弯内侧偏移会折返：沿该帧切向不前进的点丢掉
+      const last = cur[cur.length - 1]
+      if (last && (x - last.x) * f.tx + (z - last.z) * f.tz < 0.3) continue
       cur.push({ x, y: f.y, z, f: i })
     }
-    if (cur.length > 1) { out.push({ pts: cur, sector: ramp.sector }); stopMax = deckOwn }
+    if (cur.length > 1) { out.push({ pts: cur, sector: ramp.sector, side }); stopMax = deckOwn }
   }
   rampStop[r] = Math.min(deckOwn, stopMax + 2)
   return out
@@ -117,8 +120,94 @@ function onRoof(x: number, z: number) {
   const off = dx * spEnd.N[0] + dz * spEnd.N[1]
   return along > -1 && along < SPIRAL.ROOF + 0.5 && Math.abs(off) < SPIRAL.ROOF_W / 2 - 0.02
 }
-const rampAll = [...RAMPS.flatMap((r, i) => rampLines(r, i)), ...rampLines(S2_BRIDGE, RAMPS.length, onRoof)]
-export const RAIL_LINES: RailLine[] = [...ringLines(), ...rampAll]
+/** 路面高度 = 护栏脚下同侧桥面边线（去折返、与视觉桥面同源）在几何最近点的高度，沿边线线性插值；不用射线、不逐段采样 */
+function edgeY(edge: number[][], x: number, z: number, f: number) {
+  let best = Infinity, y = edge[Math.min(edge.length - 1, Math.round(f))][1]
+  for (let i = Math.max(0, Math.ceil(f - 12)); i <= Math.min(edge.length - 2, Math.floor(f + 12)); i++) {
+    const a = edge[i], b = edge[i + 1], ax = b[0] - a[0], az = b[2] - a[2], l2 = ax * ax + az * az
+    if (l2 < 1e-8) continue
+    const t = Math.min(1, Math.max(0, ((x - a[0]) * ax + (z - a[2]) * az) / l2))
+    const d = Math.hypot(x - a[0] - ax * t, z - a[2] - az * t)
+    if (d < best) { best = d; y = a[1] + (b[1] - a[1]) * t }
+  }
+  return y
+}
+function smoothRamp(r: Ramp, lane: number, lines: RailLine[]) {
+  const E = laneEdges(r.frames, r.halfW)
+  return lines.map((l) => {
+    const yOf = (x: number, z: number, f: number) => edgeY(E[l.side === 1 ? 1 : 0], x, z, f)
+    const sl = smoothLine(l, yOf, 2.5, 0.25)
+    return { ...sl, pts: densifyY(sl.pts, yOf), lane }
+  })
+}
+/** 桥面边在并入角有折点：相邻护栏点之间线性插值与路面差 >1cm 时二分加点（最多 4 层） */
+function densifyY(pts: RailPt[], yOf: (x: number, z: number, f: number) => number) {
+  const out: RailPt[] = [pts[0]]
+  const go = (a: RailPt, b: RailPt, d: number) => {
+    const m: RailPt = { ...a, x: (a.x + b.x) / 2, z: (a.z + b.z) / 2, f: (a.f + b.f) / 2, y: 0 }
+    if (a.up !== undefined) m.up = (a.up + (b.up ?? 0)) / 2
+    m.y = yOf(m.x, m.z, m.f)
+    if (d < 4 && Math.abs(m.y - (a.y + b.y) / 2) > 0.005) { go(a, m, d + 1); go(m, b, d + 1) } else { out.push(m); out.push(b) }
+  }
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i]
+    const m = yOf((a.x + b.x) / 2, (a.z + b.z) / 2, (a.f + b.f) / 2)
+    if (Math.abs(m - (a.y + b.y) / 2) > 0.005) go(a, b, 0); else out.push(b)
+  }
+  return out
+}
+const rampAll = [...RAMPS.flatMap((r, i) => smoothRamp(r, i, rampLines(r, i))), ...smoothRamp(S2_BRIDGE, RAMPS.length, rampLines(S2_BRIDGE, RAMPS.length, onRoof))]
+/**
+ * 护栏折线后处理（1104）：
+ * 1) 去折返：内侧偏移在急弯处会往回走（相邻点前进量≤0），这些点直接丢掉；
+ * 2) 平面坐标按弧长做高斯平滑（σ≈1.2m），去掉 2m 帧距带来的锯齿；
+ * 3) 按 0.5m 密采样；高度取平滑后的路面高度（环线不平滑高度，保持与桥面同源）。
+ * 视觉护栏和护栏墙碰撞都用这一份。
+ */
+function smoothLine(line: RailLine, yOf: ((x: number, z: number, f: number) => number) | null, SIG = 1.2, STEP = 0.5): RailLine {
+  const src = line.pts
+  const P: RailPt[] = [src[0]]
+  for (let i = 1; i < src.length; i++) {
+    const a = P[P.length - 1], b = src[i]
+    const n = src[Math.min(src.length - 1, i + 1)], p0 = src[Math.max(0, i - 1)]
+    const tx = n.x - p0.x, tz = n.z - p0.z, tl = Math.hypot(tx, tz) || 1
+    if (((b.x - a.x) * tx + (b.z - a.z) * tz) / tl > 0.15) P.push(b)
+  }
+  if (P.length < 3) return { ...line, pts: P }
+  const s = [0]
+  for (let i = 1; i < P.length; i++) s.push(s[i - 1] + Math.hypot(P[i].x - P[i - 1].x, P[i].z - P[i - 1].z))
+  const sm = P.map((p, i) => {
+    if (i === 0 || i === P.length - 1) return { ...p }
+    let w = 0, x = 0, y = 0, z = 0
+    for (let j = 0; j < P.length; j++) {
+      const d = s[j] - s[i]
+      if (Math.abs(d) > SIG * 3) continue
+      // 端点附近窗口对称截断，避免端点被拉偏
+      const lim = Math.min(s[i], s[P.length - 1] - s[i])
+      if (Math.abs(d) > lim + 1e-6) continue
+      const k = Math.exp(-(d * d) / (2 * SIG * SIG))
+      w += k; x += P[j].x * k; y += P[j].y * k; z += P[j].z * k
+    }
+    return { ...p, x: x / w, y: p.y, z: z / w }
+  })
+  const out: RailPt[] = []
+  for (let i = 0; i < sm.length - 1; i++) {
+    const a = sm[i], b = sm[i + 1]
+    const k = Math.max(1, Math.ceil((s[i + 1] - s[i]) / STEP))
+    for (let j = 0; j < k; j++) {
+      const t = j / k
+      const pt: RailPt = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t, f: a.f + (b.f - a.f) * t }
+      if (a.up !== undefined) pt.up = a.up + ((b.up ?? 0) - a.up) * t
+      out.push(pt)
+    }
+  }
+  out.push(sm[sm.length - 1])
+  // 高度与路面同源：按（插值后的）帧号取路面高度，不用射线、不逐段采样
+  if (yOf) for (const p of out) p.y = yOf(p.x, p.z, p.f)
+  return { ...line, pts: out }
+}
+
+export const RAIL_LINES: RailLine[] = [...ringLines().map((l) => smoothLine(l, null)), ...rampAll]
 
 /** 看不见的墙：同一折线竖起一面 2.3m 高、两面都挡的墙（trimesh）。 */
 export const WALL_H = 2.3

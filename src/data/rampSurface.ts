@@ -209,3 +209,27 @@ export function rampGuideMesh() {
   }
   return { pos: new Float32Array(pos), idx: new Uint32Array(idx) }
 }
+
+/**
+ * 去折返的路面边线（1104）：急弯内侧 f.p*halfW 会往回走、三角形互相叠（z-fighting 碎色块）。
+ * 折返的行把这一侧半宽收窄到刚好不回走（二分），高度仍取本行 f.y，所以桥面横向等高、没有竖向碎片。
+ * edge[side][i] = [x, y, z]，side 0 → -1 侧，1 → +1 侧。
+ */
+export function laneEdges(frames: Ramp['frames'], halfW: number[]): number[][][] {
+  return [-1, 1].map((s) => {
+    const out: number[][] = []
+    frames.forEach((f, i) => {
+      const at = (w: number) => [f.x + f.px * s * w, f.y, f.z + f.pz * s * w]
+      const last = out[i - 1]
+      const ok = (p: number[]) => !last || (p[0] - last[0]) * f.tx + (p[2] - last[2]) * f.tz >= 0.05
+      let p = at(halfW[i])
+      if (!ok(p)) {
+        let lo = 0, hi = halfW[i]
+        for (let k = 0; k < 20; k++) { const m = (lo + hi) / 2; if (ok(at(m))) lo = m; else hi = m }
+        p = at(lo)
+      }
+      out.push(p)
+    })
+    return out
+  })
+}
