@@ -1,12 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react'
-import { PORTFOLIO } from '../data/portfolio'
+import { exhibitFor } from '../data/exhibits'
 import { LIGHT_N, bitCount } from '../data/gadgets'
 import { closeCard, getCard, subscribeCard } from '../utils/lightCard'
 import { getProgress, subscribeProgress } from '../utils/progressStore'
 import { hit, obstacles, type R } from './PerfOverlay'
 
 /**
- * 光点作品卡片 v1：开到作品街光点弹出。不暂停、不拿焦点、不吃方向键/WASD；
+ * 国漫展厅卡片 v1：开到作品街光点弹出对应展品（纯文字，无图片）。不暂停、不拿焦点、不吃方向键/WASD；
  * Esc / E 关闭（仅卡片打开时，捕获阶段拦下，不触发作品街展示牌的 E）；手机点「关闭」。
  * 位置：在候选位里挑第一个不碰按钮 / 小地图 / 摇杆 / FPS 面板 / 标题的（复用 PerfOverlay 的避让矩形）。
  */
@@ -62,19 +62,20 @@ export function LightCard() {
   }, [i])
 
   if (i === null) return null
-  const it = PORTFOLIO[i]
+  const it = exhibitFor(i)
+  if (!it) return null
   return (
-    <div ref={box} className="lc-card" id="light-card" role="dialog" aria-label="作品卡片">
+    <div ref={box} className="lc-card" id="light-card" role="dialog" aria-label="国漫展品卡片">
       <div className="lc-head">
-        <span className="pf-label">光点 {bitCount(p.lights, LIGHT_N)}/{LIGHT_N} · 作品 {i + 1}</span>
+        <span className="pf-label">光点 {bitCount(p.lights, LIGHT_N)}/{LIGHT_N} · 国漫展厅 · 展品 {i + 1}</span>
         <button className="lc-close" onPointerDown={(e) => { e.stopPropagation(); closeCard() }} onClick={closeCard} aria-label="关闭作品卡片" tabIndex={-1}>关闭 ✕</button>
       </div>
       {it.placeholder && <div className="lc-ph">占位内容 · 待 Carroll 提供</div>}
       <div className="pf-title">{it.title}</div>
       <div className="pf-desc">{it.summary}</div>
-      <div className="pf-label">技术栈</div>
-      <div className="pf-tags">{it.stack.map((t) => <span key={t}>{t}</span>)}</div>
-      <a className="lc-link" href={it.link} tabIndex={-1} onClick={(e) => { if (it.link === '#') e.preventDefault() }}>{it.linkLabel}{it.link === '#' ? '（# 占位）' : ''}</a>
+      <div className="pf-label">出品方 / 年份</div>
+      <div className="pf-desc">{it.studioYear}</div>
+      <a className="lc-link" href={it.link} tabIndex={-1} onClick={(e) => { if (it.link === '#') e.preventDefault() }}>了解更多{it.link === '#' ? '（【占位】链接 #）' : ''}</a>
       <div className="pf-hint lc-hint">Esc / E 关闭 · 继续驾驶不受影响</div>
     </div>
   )
