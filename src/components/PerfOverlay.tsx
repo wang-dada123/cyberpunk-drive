@@ -30,9 +30,9 @@ function hzLine() {
   return `显示器≈${disp ? disp.toFixed(0) : '?'}Hz(rAF探测) 渲染中位${med.toFixed(0)}fps${tag}\n`
 }
 
-type R = { l: number; t: number; r: number; b: number }
+export type R = { l: number; t: number; r: number; b: number }
 /** 面板不许盖住的东西：所有按钮、小地图、摇杆、左上标题 */
-function obstacles(box: HTMLElement, withHud: boolean): R[] {
+export function obstacles(box: HTMLElement, withHud: boolean): R[] {
   const out: R[] = []
   document.querySelectorAll<HTMLElement>(withHud ? 'button, #minimap, .joystick-base, .hud, [role="button"]' : 'button, #minimap, .joystick-base, [role="button"]').forEach((el) => {
     if (box.contains(el)) return
@@ -42,7 +42,7 @@ function obstacles(box: HTMLElement, withHud: boolean): R[] {
   })
   return out
 }
-const hit = (a: R, b: R) => a.l < b.r + 4 && a.r > b.l - 4 && a.t < b.b + 4 && a.b > b.t - 4
+export const hit = (a: R, b: R) => a.l < b.r + 4 && a.r > b.l - 4 && a.t < b.b + 4 && a.b > b.t - 4
 
 /**
  * 收起：一条「FPS xx」小钮，按候选位置挨个试，取第一个不碰任何按钮 / 小地图 / 摇杆 / 标题的。

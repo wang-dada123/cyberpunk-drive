@@ -4,6 +4,7 @@ import { MobileControls } from './components/MobileControls'
 import { Minimap } from './components/Minimap'
 import { PortfolioOverlay } from './components/PortfolioStreet'
 import { CollectHud } from './components/CollectHud'
+import { LightCard } from './components/LightCard'
 import { useKeyboardControls } from './hooks/useControls'
 
 export default function App() {
@@ -14,6 +15,7 @@ export default function App() {
       <Scene />
       <MobileControls />
       <PortfolioOverlay />
+      <LightCard />
       {!AB.has('minimap') && <Minimap />}
       <div className="hud">
         <h1>赛博车 · Demo</h1>

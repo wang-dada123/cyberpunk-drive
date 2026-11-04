@@ -133,3 +133,13 @@ body,
 .pf-close{position:absolute;right:12px;top:8px;background:none;border:none;color:#E8F4FF;font-size:26px;cursor:pointer}
 @media (max-width:768px){.pf-card{top:auto;bottom:16px;transform:none;right:12px;width:min(240px,55vw);padding:12px}.pf-title{font-size:18px}}
 .stats-gl{position:fixed!important;top:auto!important;bottom:8px;right:8px;left:auto!important;z-index:50}
+.lc-card{position:fixed;z-index:33;box-sizing:border-box;overflow:auto;padding:12px 14px;background:rgba(10,18,32,.7);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(79,195,247,.45);border-radius:12px;
+  color:#E8F4FF;font-family:system-ui,sans-serif;box-shadow:0 0 24px rgba(79,195,247,.18);pointer-events:auto}
+.lc-card .pf-title{font-size:17px;margin:6px 0 4px}
+.lc-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.lc-head .pf-label{margin:0}
+.lc-close{background:rgba(79,195,247,.12);border:1px solid #4FC3F7;color:#E8F4FF;border-radius:6px;font-size:13px;padding:6px 10px;min-height:32px;cursor:pointer;touch-action:manipulation}
+.lc-ph{margin-top:8px;font-size:11px;color:#0A1220;background:#FFD54F;display:inline-block;padding:1px 6px;border-radius:3px;font-weight:600}
+.lc-link{display:inline-block;margin-top:10px;font-size:13px;color:#4FC3F7;border:1px dashed #4FC3F7;border-radius:6px;padding:5px 10px;text-decoration:none}
+.lc-hint{font-size:11px;opacity:.7;margin-top:8px}
