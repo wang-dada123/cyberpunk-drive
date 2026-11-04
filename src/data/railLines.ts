@@ -123,7 +123,7 @@ function onRoof(x: number, z: number) {
 /** 路面高度 = 护栏脚下同侧桥面边线（去折返、与视觉桥面同源）在几何最近点的高度，沿边线线性插值；不用射线、不逐段采样 */
 function edgeY(edge: number[][], x: number, z: number, f: number) {
   let best = Infinity, y = edge[Math.min(edge.length - 1, Math.round(f))][1]
-  for (let i = Math.max(0, Math.floor(f) - 12); i < Math.min(edge.length - 1, Math.floor(f) + 12); i++) {
+  for (let i = Math.max(0, Math.ceil(f - 12)); i <= Math.min(edge.length - 2, Math.floor(f + 12)); i++) {
     const a = edge[i], b = edge[i + 1], ax = b[0] - a[0], az = b[2] - a[2], l2 = ax * ax + az * az
     if (l2 < 1e-8) continue
     const t = Math.min(1, Math.max(0, ((x - a[0]) * ax + (z - a[2]) * az) / l2))
@@ -134,7 +134,27 @@ function edgeY(edge: number[][], x: number, z: number, f: number) {
 }
 function smoothRamp(r: Ramp, lane: number, lines: RailLine[]) {
   const E = laneEdges(r.frames, r.halfW)
-  return lines.map((l) => ({ ...smoothLine(l, (x, z, f) => edgeY(E[l.side === 1 ? 1 : 0], x, z, f), 2.5, 0.25), lane }))
+  return lines.map((l) => {
+    const yOf = (x: number, z: number, f: number) => edgeY(E[l.side === 1 ? 1 : 0], x, z, f)
+    const sl = smoothLine(l, yOf, 2.5, 0.25)
+    return { ...sl, pts: densifyY(sl.pts, yOf), lane }
+  })
+}
+/** 桥面边在并入角有折点：相邻护栏点之间线性插值与路面差 >1cm 时二分加点（最多 4 层） */
+function densifyY(pts: RailPt[], yOf: (x: number, z: number, f: number) => number) {
+  const out: RailPt[] = [pts[0]]
+  const go = (a: RailPt, b: RailPt, d: number) => {
+    const m: RailPt = { ...a, x: (a.x + b.x) / 2, z: (a.z + b.z) / 2, f: (a.f + b.f) / 2, y: 0 }
+    if (a.up !== undefined) m.up = (a.up + (b.up ?? 0)) / 2
+    m.y = yOf(m.x, m.z, m.f)
+    if (d < 4 && Math.abs(m.y - (a.y + b.y) / 2) > 0.005) { go(a, m, d + 1); go(m, b, d + 1) } else { out.push(m); out.push(b) }
+  }
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i]
+    const m = yOf((a.x + b.x) / 2, (a.z + b.z) / 2, (a.f + b.f) / 2)
+    if (Math.abs(m - (a.y + b.y) / 2) > 0.005) go(a, b, 0); else out.push(b)
+  }
+  return out
 }
 const rampAll = [...RAMPS.flatMap((r, i) => smoothRamp(r, i, rampLines(r, i))), ...smoothRamp(S2_BRIDGE, RAMPS.length, rampLines(S2_BRIDGE, RAMPS.length, onRoof))]
 /**
