@@ -11,3 +11,8 @@
 
 ### 1) 物理路径 diff
 `git diff ce732f0 -- src/components/Car* src/components/Scene.tsx src/components/Physics*` → 0 行（无差异，PhysicsClock.tsx 已删除）。
+-e 
+### 2) drive-laps（8310477，含落地等待）
+| 轮 | 段数 | 复位 | 掉落 | 卡住 | 未到 | maxFrameMs | load(1m) 前→后 | 失败段 |
+|---|---|---|---|---|---|---|---|---|
+| main#1 normal | 16 | 0 | 0 | 0 | 0 | 288 | 3.83 → 4.95 |  |
