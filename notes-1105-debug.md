@@ -26,3 +26,7 @@
 |---|---|---|
 | main ce732f0 | 95 / 95 | 84925 / 84925 |
 | 分支 8310477 | 95 / 95 | 84901 / 84901 |
+
+### 4) shot-1105（预烘图集）
+- /workspace/cyberpunk-art/send-shots/1105-fanren-cards/{1105-desktop-card,1105-phone-land-card,1105-phone-land-street}.png；灯箱片名仍为书法体（风雷翅/静虚问道），卡片与摇杆/小地图/FPS 无重叠。
+- 注：3)/4) 与 drive-laps 第 2 轮并行执行，该段 load 偏高。
