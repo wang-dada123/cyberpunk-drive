@@ -30,3 +30,4 @@
 ### 4) shot-1105（预烘图集）
 - /workspace/cyberpunk-art/send-shots/1105-fanren-cards/{1105-desktop-card,1105-phone-land-card,1105-phone-land-street}.png；灯箱片名仍为书法体（风雷翅/静虚问道），卡片与摇杆/小地图/FPS 无重叠。
 - 注：3)/4) 与 drive-laps 第 2 轮并行执行，该段 load 偏高。
+| branch#1 normal | 16 | 3 | 0 | 0 | 3 | 27759 | 4.95 → 12.59 | [('ring-lap', 'normal', 'R0F0S0', 'NOT', 'st0=[6.75, 0]', 'maxF=26015', ['timeout'], ''), ('ramp20-up', 'normal', 'R0F0S0', 'NOT', 'st0=[0.59, 0]', 'maxF=567', ['timeout'], ''), ('ramp250-down', 'normal', 'R0F0S0', 'NOT', 'st0=[8.75, 0]', 'maxF=263', ['timeout'], ''), ('ramp340-up', 'normal', 'R1F0S0', 'reached', 'st0=[0.59, 0]', 'maxF=243', [], 'center'), ('ramp340-down', 'normal', 'R2F0S0', 'reached', 'st0=[6.75, 0]', 'maxF=167', [], 'escape')] |
