@@ -20,6 +20,7 @@ page.on('pageerror', (e) => console.log('pageerror', e.message))
 await page.goto(BASE + '?shot', { waitUntil: 'domcontentloaded', timeout: 60000 })
 await page.waitForFunction(() => window.__car && window.__expansion && window.__drive, { timeout: 60000 })
 await page.waitForTimeout(1500)
+if (process.env.SETTLE) await page.evaluate(() => { window.__settle = true })
 if (process.env.CAP_MS) await page.evaluate((c) => { window.__capMs = c }, +process.env.CAP_MS)
 await page.exposeFunction('__report', (r) => console.log(JSON.stringify(r)))
 
@@ -111,6 +112,9 @@ const result = await page.evaluate(async ([FILTER, MODES]) => {
     E.resetDrive?.() // 传送后清掉上一段的 last/burst，否则会误判掉落
     E.stats.resets = 0; E.stats.jumps = 0; E.stats.why = ''
     await sleep(500)
+    const st0 = (() => { const t = rb.translation(), v = rb.linvel(); return [+t.y.toFixed(2), +v.y.toFixed(2), +Math.hypot(v.x, v.z).toFixed(2)] })()
+    let settleF = 0
+    if (window.__settle) { let ok = 0; while (ok < 6 && settleF < 600) { await new Promise((r) => requestAnimationFrame(r)); settleF++; const v = rb.linvel(); ok = Math.abs(v.y) < 0.05 && Math.hypot(v.x, v.z) < 0.05 ? ok + 1 : 0 } }
     const r0 = E.stats.resets
     let idx = 0, falls = 0, below = false, maxSpeed = 0, stuckT = 0, stuck = 0, minClear = 99
     const events = []
@@ -172,7 +176,7 @@ const result = await page.evaluate(async ([FILTER, MODES]) => {
       events: events.slice(0, 8), why: E.stats.why,
       frames: fd.length, meanDt: Math.round(fd.reduce((a, f) => a + f[1], 0) / Math.max(1, fd.length)), maxDt: Math.max(...fd.map((f) => f[1])),
       n150: fd.filter((f) => f[1] > 150).length, n300: fd.filter((f) => f[1] > 300).length,
-      spikes: fd.filter((f) => f[1] > 250).slice(0, 10), tx: window.__tx.map((e) => [e[0] - Math.round(t0), e[1], e[2], e[3], e[4]]), fdBig: fd.filter((f) => f[1] > 140).slice(0, 30), fd0: fd.slice(0, 60).map((f) => f[1]), rstEv, smp, npts: pts.length, longtasks: window.__lt.slice(lt0).filter((e) => e[1] > 100).slice(0, 10), pathT0: Math.round(t0),
+      spikes: fd.filter((f) => f[1] > 250).slice(0, 10), tx: window.__tx.map((e) => [e[0] - Math.round(t0), e[1], e[2], e[3], e[4]]), fdBig: fd.filter((f) => f[1] > 140).slice(0, 30), fd0: fd.slice(0, 60).map((f) => f[1]), rstEv, smp, npts: pts.length, longtasks: window.__lt.slice(lt0).filter((e) => e[1] > 100).slice(0, 10), pathT0: Math.round(t0), st0, settleF,
     }
   }
 
