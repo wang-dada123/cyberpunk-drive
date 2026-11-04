@@ -20,3 +20,9 @@
 ### 3) card-test / build（8310477）
 - npm run build：通过（仅 chunk>500kB 警告，与 main 相同）
 - card-test-1105 电脑：ALL OK；手机(MOB=1)：ALL OK
+
+### tris/draw（1280×720 出生点稳定态，__perf，各 2 次）
+| | calls | tris |
+|---|---|---|
+| main ce732f0 | 95 / 95 | 84925 / 84925 |
+| 分支 8310477 | 95 / 95 | 84901 / 84901 |
