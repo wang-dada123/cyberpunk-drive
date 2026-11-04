@@ -1,7 +1,7 @@
 import { AB } from '../utils/tier'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import { CuboidCollider, RigidBody } from '@react-three/rapier'
 import * as THREE from 'three'
 import { districts } from '../theme/colors'
@@ -118,7 +118,9 @@ function boardMatrix(s: Slot, z = 0) {
   return new THREE.Matrix4().compose(new THREE.Vector3(s.x, BOARD_Y, s.z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotY), new THREE.Vector3(1, 1, 1))
     .multiply(new THREE.Matrix4().makeTranslation(0, 0, z))
 }
-function buildBoards() {
+/** upload：每次重绘后立刻把图集传到 GPU。Canvas 2D 的绘制是延迟光栅化的（书法字形 + shadowBlur 很重），
+   若等网格首次进视野才上传，这笔开销会落在行驶中的某一帧（实测 0.4–0.7s 长帧），物理按固定步长补帧、输入却停在旧值，车被甩上墙卡住。 */
+function buildBoards(upload: (t: THREE.Texture) => void) {
   const rows = Math.ceil(slots.length / COLS)
   const cv = document.createElement('canvas'); cv.width = CW * COLS; cv.height = CH * rows
   const g = cv.getContext('2d')!
@@ -132,7 +134,7 @@ function buildBoards() {
   })
   const imgs = new Map<string, HTMLImageElement>()
   let brush = false
-  const paint = () => { slots.forEach((s, i) => drawFace(g, (i % COLS) * CW, Math.floor(i / COLS) * CH, s.p, imgs.get(s.p.thumb), brush)); tex.needsUpdate = true }
+  const paint = () => { slots.forEach((s, i) => drawFace(g, (i % COLS) * CW, Math.floor(i / COLS) * CH, s.p, imgs.get(s.p.thumb), brush)); tex.needsUpdate = true; upload(tex) }
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4
   paint()
   loadBrushFont().then((ok) => { if (ok) { brush = true; paint() } })
@@ -154,7 +156,8 @@ const glowMat = new THREE.MeshBasicMaterial({ color: D.accent2, transparent: tru
 const glowGeo = new THREE.PlaneGeometry(BOARD_W - 0.12, BOARD_H - 0.12)
 
 function Boards() {
-  const b = useMemo(buildBoards, [])
+  const gl = useThree((s) => s.gl)
+  const b = useMemo(() => buildBoards((t) => gl.initTexture(t)), [gl])
   useEffect(() => {
     const ric = (window as unknown as { requestIdleCallback?: (f: () => void, o?: object) => number }).requestIdleCallback
     const id = window.setTimeout(() => (ric ? ric(b.loadThumbs, { timeout: 4000 }) : b.loadThumbs()), 8000)
