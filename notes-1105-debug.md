@@ -16,3 +16,7 @@
 | 轮 | 段数 | 复位 | 掉落 | 卡住 | 未到 | maxFrameMs | load(1m) 前→后 | 失败段 |
 |---|---|---|---|---|---|---|---|---|
 | main#1 normal | 16 | 0 | 0 | 0 | 0 | 288 | 3.83 → 4.95 |  |
+
+### 3) card-test / build（8310477）
+- npm run build：通过（仅 chunk>500kB 警告，与 main 相同）
+- card-test-1105 电脑：ALL OK；手机(MOB=1)：ALL OK
