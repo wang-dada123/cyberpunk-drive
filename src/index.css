@@ -135,7 +135,7 @@ body,
 .stats-gl{position:fixed!important;top:auto!important;bottom:8px;right:8px;left:auto!important;z-index:50}
 .lc-card{position:fixed;z-index:33;box-sizing:border-box;overflow:auto;padding:12px 14px;background:rgba(10,18,32,.7);
   backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(79,195,247,.45);border-radius:12px;
-  color:#E8F4FF;font-family:system-ui,sans-serif;box-shadow:0 0 24px rgba(79,195,247,.18);pointer-events:auto}
+  color:#E8F4FF;font-family:system-ui,sans-serif;box-shadow:0 0 6px rgba(79,195,247,.6),0 0 22px rgba(79,195,247,.25),inset 0 0 12px rgba(79,195,247,.12);pointer-events:auto}
 .lc-card .pf-title{font-size:17px;margin:6px 0 4px}
 .lc-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .lc-head .pf-label{margin:0}
