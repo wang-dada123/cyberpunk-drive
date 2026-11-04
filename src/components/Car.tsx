@@ -6,6 +6,7 @@ import { useFrame } from '@react-three/fiber'
 import { CapsuleCollider, CuboidCollider, RigidBody, useAfterPhysicsStep, useBeforePhysicsStep, useRapier, type RapierRigidBody } from '@react-three/rapier'
 import * as THREE from 'three'
 import { getDriveInput } from '../hooks/useControls'
+import { LONG_FRAME, MAX_CATCHUP } from './PhysicsClock'
 
 const FORCE = 37 // 1103：起步更猛（0→18 约 1.4s → 0.9s）
 const TURN = 3.2
@@ -54,9 +55,9 @@ export function Car() {
     currQ.current.set(r.x, r.y, r.z, r.w)
   }
 
-  // 渲染帧开头：累加器（与 rapier 相同的 clamp 0.5 不精确也无妨，只用于 alpha）
+  // 渲染帧开头：累加器（与 PhysicsClock 同一套长帧规则，只用于 alpha）
   useFrame((_, rawDt) => {
-    acc.current += Math.min(rawDt, 0.1)
+    acc.current += rawDt > LONG_FRAME ? MAX_CATCHUP : rawDt
     physStats.stepsThisFrame = 0
   }, -61)
 

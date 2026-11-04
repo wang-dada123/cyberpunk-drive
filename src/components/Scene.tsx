@@ -8,6 +8,7 @@ import { Canvas, advance } from '@react-three/fiber'
 const MANUAL = import.meta.env.DEV && new URLSearchParams(location.search).has('manual')
 if (MANUAL) Object.assign(window, { __advance: advance })
 import { Physics } from '@react-three/rapier'
+import { PhysicsClock } from './PhysicsClock'
 import { FogPlanes } from './FogPlanes'
 import { EffectComposer, Bloom } from '@react-three/postprocessing'
 import { colors, bloom, fogDensity } from '../theme/colors'
@@ -80,7 +81,9 @@ export function Scene() {
       <fogExp2 attach="fog" args={[colors.fog, fogDensity]} />
       <Lights />
       <Suspense fallback={null}>
-        <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60} interpolate={false} updatePriority={-50}>
+        {/* paused：帧循环交给 PhysicsClock（长帧补步上限），step 本身不受 paused 影响 */}
+        <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60} interpolate={false} updatePriority={-50} paused>
+          <PhysicsClock priority={-50} />
           <StaticBatch><City /></StaticBatch>
           <Car />
         </Physics>
