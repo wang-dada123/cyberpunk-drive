@@ -11,6 +11,7 @@ import {
   stallSector, withFlag, withLight, withStall,
 } from '../data/gadgets'
 import { getProgress, resetProgress, setProgress } from '../utils/progressStore'
+import { tickCard } from '../utils/lightCard'
 
 /**
  * C8 机关 / 收集灰模。触发看车体位置，键盘和摇杆都能开。
@@ -236,6 +237,7 @@ export function Gadgets() {
     let next = getProgress()
     const li = lightIndexNear(x, y, z)
     if (li >= 0) next = withLight(next, li)
+    tickCard(li, (i) => (LIGHTS[i].x - x) ** 2 + (LIGHTS[i].z - z) ** 2)
     if (inGate(x, y, z)) next = withFlag(next, 'gate')
     if (onE8(x, y, z)) next = withFlag(next, 'e8')
     if (onS2(x, y, z)) next = withFlag(next, 's2')
