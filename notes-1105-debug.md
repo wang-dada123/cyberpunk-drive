@@ -33,3 +33,4 @@
 | branch#1 normal | 16 | 3 | 0 | 0 | 3 | 27759 | 4.95 → 12.59 | [('ring-lap', 'normal', 'R0F0S0', 'NOT', 'st0=[6.75, 0]', 'maxF=26015', ['timeout'], ''), ('ramp20-up', 'normal', 'R0F0S0', 'NOT', 'st0=[0.59, 0]', 'maxF=567', ['timeout'], ''), ('ramp250-down', 'normal', 'R0F0S0', 'NOT', 'st0=[8.75, 0]', 'maxF=263', ['timeout'], ''), ('ramp340-up', 'normal', 'R1F0S0', 'reached', 'st0=[0.59, 0]', 'maxF=243', [], 'center'), ('ramp340-down', 'normal', 'R2F0S0', 'reached', 'st0=[6.75, 0]', 'maxF=167', [], 'escape')] |
 | main#2 normal | 16 | 0 | 0 | 0 | 0 | 28342 | 12.59 → 14.25 |  |
 | branch#2 normal | 2 | 0 | 0 | 0 | 1 | 8157 | 14.25 → 11.31 | [('ring-lap', 'normal', 'R0F0S0', 'NOT', 'st0=[6.75, 0]', 'maxF=8157', ['timeout'], '')] |
+| main#3 normal | 0 | 0 | 0 | 0 | 0 | 0 | 11.31 → 6.86 |  |
