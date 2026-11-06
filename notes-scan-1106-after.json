@@ -1,0 +1,19 @@
+{
+ "railDup": {
+  "n": 0,
+  "totalLen": 0,
+  "list": []
+ },
+ "railInRoad": {
+  "n": 0,
+  "totalLen": 0,
+  "list": []
+ },
+ "railNear": [],
+ "deck": {
+  "pairs": 0,
+  "area": 0,
+  "groups": []
+ },
+ "tris": 5483
+}

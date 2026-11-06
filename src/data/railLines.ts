@@ -3,6 +3,7 @@ import { laneEdges, rampRailSpan } from './rampSurface'
 import { S2_BRIDGE } from './s2Bridge'
 import { SPIRAL, spiralFrame } from './mapLayout'
 import { J2_H, j2Guard } from './expansionLayout'
+import { rampKeep } from './deckGeom'
 
 /**
  * 护栏中线：视觉护栏和看不见的碰撞墙都从这里取同一批折线，平面位置完全一致。
@@ -63,9 +64,11 @@ function rampLines(ramp: Ramp, r: number, skip?: (x: number, z: number) => boole
       const z = f.z + f.pz * side * off
       const ring = ringLat(x, z)
       // 进到高架护栏线以内（含护栏本身）就收住：不在桥面上斜插
-      const onDeck = Math.abs(ring.lat) < RING_RAIL_OFF + 0.35 && Math.abs(f.y - ring.y) < 1.6
+      // S2（1106）：近侧护栏离环线内护栏 <1.6m 就收住，汇入段只留环线这一条主路护栏，不再两条并排
+      const near = r === RAMPS.length && Math.abs(ring.lat) < Math.abs(ringLat(f.x, f.z).lat)
+      const onDeck = Math.abs(ring.lat) < RING_RAIL_OFF + (near ? 1.6 : 0.35) && Math.abs(f.y - ring.y) < 1.6
       if (skip && skip(x, z)) {
-        if (cur.length > 1) out.push({ pts: cur, sector: ramp.sector, side })
+        if (cur.length > 1) { out.push({ pts: cur, sector: ramp.sector, side }); stopMax = Math.max(stopMax, i) }
         cur = []
         continue
       }
@@ -156,7 +159,9 @@ function densifyY(pts: RailPt[], yOf: (x: number, z: number, f: number) => numbe
   }
   return out
 }
-const rampAll = [...RAMPS.flatMap((r, i) => smoothRamp(r, i, rampLines(r, i))), ...smoothRamp(S2_BRIDGE, RAMPS.length, rampLines(S2_BRIDGE, RAMPS.length, onRoof))]
+/** 20°/340° 匝道镜像、在 θ=0（z=0）汇合：各自护栏只画自己那半边，不伸进对方桥面（与 deckGeom.rampKeep 同一分界） */
+const rampSkip = (r: Ramp) => { const k = rampKeep(r.deg); return k ? (x: number, z: number) => k(x, z) < -0.05 : undefined }
+const rampAll = [...RAMPS.flatMap((r, i) => smoothRamp(r, i, rampLines(r, i, rampSkip(r)))), ...smoothRamp(S2_BRIDGE, RAMPS.length, rampLines(S2_BRIDGE, RAMPS.length, onRoof))]
 /**
  * 护栏折线后处理（1104）：
  * 1) 去折返：内侧偏移在急弯处会往回走（相邻点前进量≤0），这些点直接丢掉；

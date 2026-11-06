@@ -1,0 +1,306 @@
+[
+ {
+  "name": "ring-lap",
+  "resets": 0,
+  "falls": 0,
+  "stuck": 0,
+  "maxSpeed": 13.2,
+  "minClear": 0.19,
+  "reached": true,
+  "jumps": 1,
+  "events": [],
+  "why": "",
+  "maxFrameMs": 234,
+  "st0": [
+   6.2,
+   0
+  ],
+  "settleF": 6,
+  "mode": "normal"
+ },
+ {
+  "name": "ramp20-up",
+  "resets": 0,
+  "falls": 0,
+  "stuck": 0,
+  "maxSpeed": 12.2,
+  "minClear": 0.18,
+  "reached": true,
+  "jumps": 0,
+  "events": [],
+  "why": "",
+  "maxFrameMs": 107,
+  "st0": [
+   0.2,
+   0
+  ],
+  "settleF": 6,
+  "mode": "normal"
+ },
+ {
+  "name": "ramp20-down",
+  "resets": 0,
+  "falls": 0,
+  "stuck": 0,
+  "maxSpeed": 12.3,
+  "minClear": 0.17,
+  "reached": true,
+  "jumps": 0,
+  "events": [],
+  "why": "",
+  "maxFrameMs": 198,
+  "st0": [
+   6.19,
+   0
+  ],
+  "settleF": 6,
+  "mode": "normal"
+ },
+ {
+  "name": "ramp160-up",
+  "resets": 0,
+  "falls": 0,
+  "stuck": 0,
+  "maxSpeed": 12.2,
+  "minClear": 0.17,
+  "reached": true,
+  "jumps": 0,
+  "events": [],
+  "why": "",
+  "maxFrameMs": 142,
+  "st0": [
+   0.2,
+   0
+  ],
+  "settleF": 6,
+  "mode": "normal"
+ },
+ {
+  "name": "ramp160-down",
+  "resets": 0,
+  "falls": 0,
+  "stuck": 0,
+  "maxSpeed": 12.6,
+  "minClear": 0.16,
+  "reached": true,
+  "jumps": 0,
+  "events": [],
+  "why": "",
+  "maxFrameMs": 187,
+  "st0": [
+   8.19,
+   0
+  ],
+  "settleF": 6,
+  "mode": "normal"
+ },
+ {
+  "name": "ramp250-up",
+  "resets": 0,
+  "falls": 0,
+  "stuck": 0,
+  "maxSpeed": 12.2,
+  "minClear": 0.16,
+  "reached": true,
+  "jumps": 0,
+  "events": [],
+  "why": "",
+  "maxFrameMs": 146,
+  "st0": [
+   0.2,
+   0
+  ],
+  "settleF": 6,
+  "mode": "normal"
+ },
+ {
+  "name": "ramp250-down",
+  "resets": 0,
+  "falls": 0,
+  "stuck": 0,
+  "maxSpeed": 12.4,
+  "minClear": 0.18,
+  "reached": true,
+  "jumps": 0,
+  "events": [],
+  "why": "",
+  "maxFrameMs": 155,
+  "st0": [
+   8.2,
+   0
+  ],
+  "settleF": 6,
+  "mode": "normal"
+ },
+ {
+  "name": "ramp340-up",
+  "resets": 0,
+  "falls": 0,
+  "stuck": 0,
+  "maxSpeed": 12.2,
+  "minClear": 0.17,
+  "reached": true,
+  "jumps": 0,
+  "events": [],
+  "why": "",
+  "maxFrameMs": 103,
+  "st0": [
+   0.2,
+   0
+  ],
+  "settleF": 6,
+  "mode": "normal"
+ },
+ {
+  "name": "ramp340-down",
+  "resets": 0,
+  "falls": 0,
+  "stuck": 0,
+  "maxSpeed": 12.4,
+  "minClear": 0.18,
+  "reached": true,
+  "jumps": 0,
+  "events": [],
+  "why": "",
+  "maxFrameMs": 152,
+  "st0": [
+   6.19,
+   0
+  ],
+  "settleF": 6,
+  "mode": "normal"
+ },
+ {
+  "name": "J2-ccw",
+  "resets": 0,
+  "falls": 0,
+  "stuck": 0,
+  "maxSpeed": 13.4,
+  "minClear": 0.17,
+  "reached": true,
+  "jumps": 1,
+  "events": [],
+  "why": "",
+  "maxFrameMs": 114,
+  "st0": [
+   8.2,
+   0
+  ],
+  "settleF": 6,
+  "mode": "normal"
+ },
+ {
+  "name": "J2-cw",
+  "resets": 0,
+  "falls": 0,
+  "stuck": 0,
+  "maxSpeed": 13.5,
+  "minClear": 0.17,
+  "reached": true,
+  "jumps": 1,
+  "events": [],
+  "why": "",
+  "maxFrameMs": 126,
+  "st0": [
+   8.19,
+   0
+  ],
+  "settleF": 6,
+  "mode": "normal"
+ },
+ {
+  "name": "S1-spiral-up",
+  "resets": 0,
+  "falls": 0,
+  "stuck": 0,
+  "maxSpeed": 10.7,
+  "minClear": 0.15,
+  "reached": true,
+  "jumps": 0,
+  "events": [],
+  "why": "",
+  "maxFrameMs": 9283,
+  "st0": [
+   0.2,
+   0
+  ],
+  "settleF": 6,
+  "mode": "normal"
+ },
+ {
+  "name": "S2-down",
+  "resets": 0,
+  "falls": 0,
+  "stuck": 0,
+  "maxSpeed": 12.9,
+  "minClear": 0.17,
+  "reached": true,
+  "jumps": 0,
+  "events": [],
+  "why": "",
+  "maxFrameMs": 4445,
+  "st0": [
+   12.21,
+   0
+  ],
+  "settleF": 6,
+  "mode": "normal"
+ },
+ {
+  "name": "S2-up",
+  "resets": 0,
+  "falls": 0,
+  "stuck": 0,
+  "maxSpeed": 12.2,
+  "minClear": 0.17,
+  "reached": true,
+  "jumps": 0,
+  "events": [],
+  "why": "",
+  "maxFrameMs": 198,
+  "st0": [
+   6.19,
+   0
+  ],
+  "settleF": 6,
+  "mode": "normal"
+ },
+ {
+  "name": "S1-S2-chain",
+  "resets": 0,
+  "falls": 0,
+  "stuck": 0,
+  "maxSpeed": 8.5,
+  "minClear": 0.15,
+  "reached": true,
+  "jumps": 0,
+  "events": [],
+  "why": "",
+  "maxFrameMs": 226,
+  "st0": [
+   0.21,
+   0
+  ],
+  "settleF": 6,
+  "mode": "normal"
+ },
+ {
+  "name": "skybridge",
+  "resets": 0,
+  "falls": 0,
+  "stuck": 0,
+  "maxSpeed": 12,
+  "minClear": 99,
+  "reached": true,
+  "jumps": 0,
+  "events": [],
+  "why": "",
+  "maxFrameMs": 182,
+  "st0": [
+   5.79,
+   -3.57
+  ],
+  "settleF": 23,
+  "mode": "normal"
+ }
+]
