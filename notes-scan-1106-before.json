@@ -1,0 +1,857 @@
+{
+ "railDup": {
+  "n": 2,
+  "totalLen": 10,
+  "list": [
+   {
+    "a": 17,
+    "b": 24,
+    "lineA": "ramp20 side-1",
+    "lineB": "ramp340 side1",
+    "from": [
+     247.5,
+     6,
+     -2.5
+    ],
+    "len": 5,
+    "minD": 0.009,
+    "tags": [],
+    "deg": 0.6,
+    "to": [
+     247.8,
+     6,
+     2.5
+    ]
+   },
+   {
+    "a": 24,
+    "b": 17,
+    "lineA": "ramp340 side1",
+    "lineB": "ramp20 side-1",
+    "from": [
+     247.5,
+     6,
+     2.5
+    ],
+    "len": 5,
+    "minD": 0.009,
+    "tags": [],
+    "deg": 359.4,
+    "to": [
+     247.8,
+     6,
+     -2.5
+    ]
+   }
+  ]
+ },
+ "railInRoad": {
+  "n": 7,
+  "totalLen": 161.9,
+  "list": [
+   {
+    "line": "ring s0",
+    "li": 0,
+    "from": [
+     260.3,
+     6,
+     0
+    ],
+    "len": 21.5,
+    "deg": 0,
+    "tags": [],
+    "to": [
+     259.4,
+     6,
+     -21.5
+    ]
+   },
+   {
+    "line": "ring s3",
+    "li": 3,
+    "from": [
+     -258.1,
+     8,
+     -33.5
+    ],
+    "len": 24.9,
+    "deg": 172.6,
+    "tags": [],
+    "to": [
+     -260.1,
+     8,
+     -8.7
+    ]
+   },
+   {
+    "line": "ring s5",
+    "li": 5,
+    "from": [
+     -21.5,
+     8,
+     259.4
+    ],
+    "len": 21.5,
+    "deg": 265.3,
+    "tags": [],
+    "to": [
+     0,
+     8,
+     260.3
+    ]
+   },
+   {
+    "line": "ring s6",
+    "li": 6,
+    "from": [
+     0,
+     8,
+     260.3
+    ],
+    "len": 21.1,
+    "deg": 270,
+    "tags": [],
+    "to": [
+     21.1,
+     8,
+     259.4
+    ]
+   },
+   {
+    "line": "ring s7",
+    "li": 7,
+    "from": [
+     259.4,
+     6,
+     21.5
+    ],
+    "len": 21.5,
+    "deg": 355.3,
+    "tags": [],
+    "to": [
+     260.3,
+     6,
+     0
+    ]
+   },
+   {
+    "line": "ramp20 side-1",
+    "li": 17,
+    "from": [
+     247.9,
+     6,
+     5.9
+    ],
+    "len": 25.7,
+    "deg": 358.6,
+    "tags": [],
+    "to": [
+     247.3,
+     6,
+     31.6
+    ]
+   },
+   {
+    "line": "ramp340 side1",
+    "li": 24,
+    "from": [
+     247.9,
+     6,
+     -5.9
+    ],
+    "len": 25.7,
+    "deg": 1.4,
+    "tags": [],
+    "to": [
+     247.3,
+     6,
+     -31.6
+    ]
+   }
+  ]
+ },
+ "railNear": [
+  {
+   "lineA": "ring s2",
+   "lineB": "S2 side1",
+   "from": [
+    -118.7,
+    6,
+    -220
+   ],
+   "len": 5.5,
+   "minD": 0.64,
+   "deg": 118.4,
+   "tags": [
+    "S2窄巷门/汇入",
+    "S2扇区"
+   ],
+   "to": [
+    -123.4,
+    6,
+    -217.2
+   ]
+  },
+  {
+   "lineA": "ramp20 side-1",
+   "lineB": "ramp340 side1",
+   "from": [
+    246.5,
+    6,
+    -12.2
+   ],
+   "len": 24.5,
+   "minD": 0.01,
+   "deg": 2.8,
+   "tags": [],
+   "to": [
+    248.1,
+    6,
+    12.2
+   ]
+  }
+ ],
+ "deck": {
+  "pairs": 4303,
+  "area": 6269.96,
+  "groups": [
+   {
+    "pair": "ramp20-deck × ramp340-deck",
+    "deg": 355,
+    "at": [
+     250.7,
+     6,
+     32
+    ],
+    "tris": 102,
+    "area": 245.33,
+    "maxDyCm": 3.7,
+    "tags": []
+   },
+   {
+    "pair": "ramp20-deck × ramp340-deck",
+    "deg": 5,
+    "at": [
+     248.9,
+     6.04,
+     -12.3
+    ],
+    "tris": 95,
+    "area": 233.02,
+    "maxDyCm": 4.5,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s0 × ramp340-deck",
+    "deg": 5,
+    "at": [
+     259,
+     6.04,
+     -11.2
+    ],
+    "tris": 116,
+    "area": 229.42,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s6 × ramp250-deck",
+    "deg": 275,
+    "at": [
+     11.2,
+     8.04,
+     259
+    ],
+    "tris": 116,
+    "area": 229.42,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s7 × ramp20-deck",
+    "deg": 345,
+    "at": [
+     247.4,
+     6.04,
+     77.9
+    ],
+    "tris": 142,
+    "area": 227.82,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s0 × ramp340-deck",
+    "deg": 15,
+    "at": [
+     252.8,
+     6.04,
+     -55.8
+    ],
+    "tris": 140,
+    "area": 227.56,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s6 × ramp250-deck",
+    "deg": 285,
+    "at": [
+     55.8,
+     8.04,
+     252.8
+    ],
+    "tris": 140,
+    "area": 227.56,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s0 × ramp20-deck",
+    "deg": 5,
+    "at": [
+     259.1,
+     6.04,
+     -12.3
+    ],
+    "tris": 145,
+    "area": 226.37,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s4 × ramp160-deck",
+    "deg": 185,
+    "at": [
+     -257.6,
+     8.04,
+     11.2
+    ],
+    "tris": 136,
+    "area": 225.52,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s7 × ramp20-deck",
+    "deg": 355,
+    "at": [
+     257.1,
+     6.04,
+     34
+    ],
+    "tris": 112,
+    "area": 222.67,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s7 × ramp20-deck",
+    "deg": 350,
+    "at": [
+     253.9,
+     6.04,
+     55.1
+    ],
+    "tris": 138,
+    "area": 220.21,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s3 × ramp160-deck",
+    "deg": 175,
+    "at": [
+     -257.5,
+     8.04,
+     -34.1
+    ],
+    "tris": 164,
+    "area": 218.39,
+    "maxDyCm": 3.9,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s5 × ramp250-deck",
+    "deg": 265,
+    "at": [
+     -33.7,
+     8.04,
+     256.9
+    ],
+    "tris": 136,
+    "area": 216.34,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s7 × ramp340-deck",
+    "deg": 355,
+    "at": [
+     256.9,
+     6.04,
+     33.7
+    ],
+    "tris": 136,
+    "area": 216.34,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s0 × ramp340-deck",
+    "deg": 10,
+    "at": [
+     255.8,
+     6.04,
+     -34.4
+    ],
+    "tris": 137,
+    "area": 213.78,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s6 × ramp250-deck",
+    "deg": 280,
+    "at": [
+     34.4,
+     8.04,
+     255.8
+    ],
+    "tris": 137,
+    "area": 213.78,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s3 × ramp160-deck",
+    "deg": 170,
+    "at": [
+     -244.7,
+     8.04,
+     -52.1
+    ],
+    "tris": 214,
+    "area": 158.05,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s2 × S2-deck",
+    "deg": 105,
+    "at": [
+     -54.6,
+     6.04,
+     -243.2
+    ],
+    "tris": 167,
+    "area": 155.1,
+    "maxDyCm": 4,
+    "tags": [
+     "S2窄巷门/汇入",
+     "S2扇区"
+    ]
+   },
+   {
+    "pair": "ring-deck s4 × ramp160-deck",
+    "deg": 190,
+    "at": [
+     -257.7,
+     8.04,
+     34
+    ],
+    "tris": 106,
+    "area": 153.12,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ramp20-deck × ramp340-deck",
+    "deg": 0,
+    "at": [
+     249.2,
+     6.05,
+     -3.9
+    ],
+    "tris": 38,
+    "area": 146.16,
+    "maxDyCm": 1,
+    "tags": []
+   },
+   {
+    "pair": "ramp20-deck × ramp340-deck",
+    "deg": 10,
+    "at": [
+     251.3,
+     6,
+     -33.3
+    ],
+    "tris": 143,
+    "area": 144.28,
+    "maxDyCm": 4.8,
+    "tags": []
+   },
+   {
+    "pair": "ramp20-deck × ramp340-deck",
+    "deg": 360,
+    "at": [
+     250.1,
+     6.04,
+     1.1
+    ],
+    "tris": 43,
+    "area": 142.22,
+    "maxDyCm": 0.9,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s0 × ramp20-deck",
+    "deg": 10,
+    "at": [
+     255.6,
+     6.04,
+     -34.3
+    ],
+    "tris": 136,
+    "area": 138.21,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s5 × ramp250-deck",
+    "deg": 260,
+    "at": [
+     -51.5,
+     8.04,
+     245.3
+    ],
+    "tris": 149,
+    "area": 138.18,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s7 × ramp340-deck",
+    "deg": 350,
+    "at": [
+     245.3,
+     6.04,
+     51.5
+    ],
+    "tris": 149,
+    "area": 138.18,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ramp20-deck × ramp340-deck",
+    "deg": 350,
+    "at": [
+     245.6,
+     6,
+     51.6
+    ],
+    "tris": 148,
+    "area": 131.82,
+    "maxDyCm": 4.9,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s3 × ramp160-deck",
+    "deg": 180,
+    "at": [
+     -257.9,
+     8.04,
+     -11.5
+    ],
+    "tris": 65,
+    "area": 116.4,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s7 × ramp340-deck",
+    "deg": 360,
+    "at": [
+     258.3,
+     6.04,
+     3.5
+    ],
+    "tris": 65,
+    "area": 116.35,
+    "maxDyCm": 3.9,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s5 × ramp250-deck",
+    "deg": 270,
+    "at": [
+     -11.5,
+     8.04,
+     258.7
+    ],
+    "tris": 65,
+    "area": 116.35,
+    "maxDyCm": 3.9,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s7 × ramp20-deck",
+    "deg": 360,
+    "at": [
+     258.5,
+     6.04,
+     3.3
+    ],
+    "tris": 59,
+    "area": 111.54,
+    "maxDyCm": 3.9,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s4 × ramp160-deck",
+    "deg": 180,
+    "at": [
+     -259.2,
+     8.04,
+     0.5
+    ],
+    "tris": 70,
+    "area": 108.18,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s0 × ramp20-deck",
+    "deg": 0,
+    "at": [
+     258.5,
+     6.04,
+     -0.9
+    ],
+    "tris": 58,
+    "area": 106.34,
+    "maxDyCm": 3.9,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s0 × ramp340-deck",
+    "deg": 0,
+    "at": [
+     258.3,
+     6.04,
+     -0.7
+    ],
+    "tris": 49,
+    "area": 104.27,
+    "maxDyCm": 3.9,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s6 × ramp250-deck",
+    "deg": 270,
+    "at": [
+     0.7,
+     8.04,
+     258.3
+    ],
+    "tris": 49,
+    "area": 104.27,
+    "maxDyCm": 3.9,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s0 × ramp340-deck",
+    "deg": 20,
+    "at": [
+     241.2,
+     6.04,
+     -76
+    ],
+    "tris": 48,
+    "area": 74.68,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s6 × ramp250-deck",
+    "deg": 290,
+    "at": [
+     76,
+     8.04,
+     241.2
+    ],
+    "tris": 48,
+    "area": 74.68,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s7 × ramp20-deck",
+    "deg": 340,
+    "at": [
+     245,
+     6.04,
+     84.1
+    ],
+    "tris": 44,
+    "area": 67.49,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s2 × S2-deck",
+    "deg": 110,
+    "at": [
+     -76.3,
+     6.04,
+     -242.7
+    ],
+    "tris": 69,
+    "area": 61.06,
+    "maxDyCm": 4,
+    "tags": [
+     "S2窄巷门/汇入",
+     "S2扇区"
+    ]
+   },
+   {
+    "pair": "ring-deck s2 × S2-deck",
+    "deg": 100,
+    "at": [
+     -50.6,
+     6.04,
+     -245.2
+    ],
+    "tris": 27,
+    "area": 31.84,
+    "maxDyCm": 4,
+    "tags": [
+     "S2窄巷门/汇入",
+     "S2扇区"
+    ]
+   },
+   {
+    "pair": "ramp340-deck × ramp340-deck",
+    "deg": 350,
+    "at": [
+     243.1,
+     6.01,
+     50.8
+    ],
+    "tris": 43,
+    "area": 7.97,
+    "maxDyCm": 4,
+    "tags": []
+   },
+   {
+    "pair": "ramp20-deck × ramp20-deck",
+    "deg": 10,
+    "at": [
+     243.4,
+     6.06,
+     -45.4
+    ],
+    "tris": 50,
+    "area": 7.89,
+    "maxDyCm": 3.9,
+    "tags": []
+   },
+   {
+    "pair": "ramp250-deck × ramp250-deck",
+    "deg": 260,
+    "at": [
+     -48.5,
+     8.02,
+     242.7
+    ],
+    "tris": 42,
+    "area": 7.73,
+    "maxDyCm": 3.9,
+    "tags": []
+   },
+   {
+    "pair": "ramp160-deck × ramp160-deck",
+    "deg": 170,
+    "at": [
+     -242.6,
+     8.02,
+     -48.4
+    ],
+    "tris": 39,
+    "area": 5.26,
+    "maxDyCm": 5,
+    "tags": []
+   },
+   {
+    "pair": "ramp20-deck × ramp20-deck",
+    "deg": 20,
+    "at": [
+     215.6,
+     0.08,
+     -69.7
+    ],
+    "tris": 9,
+    "area": 2.4,
+    "maxDyCm": 4.9,
+    "tags": []
+   },
+   {
+    "pair": "ramp340-deck × ramp340-deck",
+    "deg": 340,
+    "at": [
+     215.7,
+     0.08,
+     70.2
+    ],
+    "tris": 7,
+    "area": 2.4,
+    "maxDyCm": 4.9,
+    "tags": []
+   },
+   {
+    "pair": "ramp160-deck × ramp160-deck",
+    "deg": 160,
+    "at": [
+     -216.4,
+     0.08,
+     -75.3
+    ],
+    "tris": 3,
+    "area": 1.58,
+    "maxDyCm": 4.5,
+    "tags": []
+   },
+   {
+    "pair": "ramp250-deck × ramp250-deck",
+    "deg": 250,
+    "at": [
+     -75.3,
+     0.08,
+     216.4
+    ],
+    "tris": 3,
+    "area": 1.58,
+    "maxDyCm": 4.5,
+    "tags": []
+   },
+   {
+    "pair": "ring-deck s2 × S2-deck",
+    "deg": 115,
+    "at": [
+     -96.8,
+     6.04,
+     -233.7
+    ],
+    "tris": 6,
+    "area": 0.83,
+    "maxDyCm": 4,
+    "tags": [
+     "S2窄巷门/汇入",
+     "S2扇区"
+    ]
+   }
+  ]
+ },
+ "tris": 5252
+}
