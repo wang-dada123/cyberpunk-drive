@@ -8,7 +8,6 @@ const R = await s.ssrLoadModule('/src/data/railLines.ts')
 const E = await s.ssrLoadModule('/src/data/expansionLayout.ts')
 const S = await s.ssrLoadModule('/src/data/s2Bridge.ts')
 const RS = await s.ssrLoadModule('/src/data/rampSurface.ts')
-await s.close()
 const HW = E.ELEV_W / 2
 const S2 = S.S2_BRIDGE
 const LANES = [...E.RAMPS, S2]
@@ -53,25 +52,20 @@ const dupKey = new Map()
 for (const r of railDup) { const k = Math.min(r.a, r.b) + '-' + Math.max(r.a, r.b) + '@' + Math.round(r.deg); const o = dupKey.get(k); if (!o || r.len > o.len) dupKey.set(k, r) }
 const railDups = [...dupKey.values()].map((r) => ({ ...r, len: +r.len.toFixed(1), minD: +r.minD.toFixed(3) }))
 // ---------- 桥面三角（与 buildDeck 同源） ----------
-function ringAt(x, z) { const f = E.frameAt(Math.atan2(-z, x)); if (f.gap) return null; const lat = (x - f.x) * f.px + (z - f.z) * f.pz; return Math.abs(lat) < HW + 0.3 ? { y: f.y } : null }
-function deckTris(frames, halfW, yLift, edges, src) {
-  const rows = frames.map((f, i) => [-1, 0, 1].map((sd) => { const e = edges && sd !== 0 ? edges[sd < 0 ? 0 : 1][i] : null
-    const hw = halfW ? halfW[i] : HW
-    let x = e ? e[0] : f.x + f.px * sd * hw, y = Math.max(0.02, e ? e[1] : f.y) + yLift, z = e ? e[2] : f.z + f.pz * sd * hw
-    if (edges) { const r = ringAt(x, z); if (r && Math.abs(y - r.y) < 0.3) y = r.y }
-    return [x, y, z] }))
-  const T = []
-  for (let i = 0; i < frames.length - 1; i++) { if (frames[i].gap || frames[i + 1].gap) continue
-    const a = rows[i], b = rows[i + 1]
-    T.push([a[0], b[0], a[1], src, i], [b[0], b[1], a[1], src, i], [a[1], b[1], a[2], src, i], [b[1], b[2], a[2], src, i]) }
+const DG = await s.ssrLoadModule('/src/data/deckGeom.ts')
+function deckTris(frames, halfW, yLift, edges, src, keep) {
+  const { pos, idx } = DG.deckArrays(frames, halfW ?? undefined, yLift, edges ?? undefined, keep), T = []
+  const V = (k) => [pos[k * 3], pos[k * 3 + 1], pos[k * 3 + 2]]
+  for (let t = 0; t < idx.length; t += 3) T.push([V(idx[t]), V(idx[t + 1]), V(idx[t + 2]), src, Math.floor(idx[t] / 3)])
   return T
 }
-const TR = (() => {
+const TR = await (async () => {
   const T = []
   for (let sct = 0; sct < E.SECTORS; sct++) T.push(...deckTris(E.RING_FRAMES.slice(sct * E.RING_PER, sct * E.RING_PER + E.RING_PER + 1), null, 0.04, null, `ring-deck s${sct}`))
-  for (const r of E.RAMPS) T.push(...deckTris(r.frames.slice(0, r.deckOwn + 1), r.halfW.slice(0, r.deckOwn + 1), 0.06, RS.laneEdges(r.frames, r.halfW), `ramp${r.deg}-deck`))
+  for (const r of E.RAMPS) T.push(...deckTris(r.frames.slice(0, r.deckOwn + 1), r.halfW.slice(0, r.deckOwn + 1), 0.06, RS.laneEdges(r.frames, r.halfW), `ramp${r.deg}-deck`, DG.rampKeep(r.deg)))
   T.push(...deckTris(S2.frames.slice(0, S2.deckOwn + 1), S2.halfW.slice(0, S2.deckOwn + 1), 0.06, RS.laneEdges(S2.frames, S2.halfW), 'S2-deck'))
   return T })()
+await s.close()
 // 三角 XZ 交集（凸多边形裁剪）
 const area = (P) => { let a = 0; for (let i = 0; i < P.length; i++) { const p = P[i], q = P[(i + 1) % P.length]; a += p[0] * q[2] - q[0] * p[2] } return a / 2 }
 function clip(subj, tri) {
