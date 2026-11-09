@@ -47,11 +47,17 @@ ok(near && far, 'S2 两侧护栏都在')
 
 let nearMin = Infinity
 for (const p of near.pts) for (const r of rings) nearMin = Math.min(nearMin, segDist(p, r.pts))
-ok(nearMin >= 3.2, `S2 近侧护栏离环线护栏 ${nearMin.toFixed(2)}m，应 ≥ 3.2m（不再并排插进汇入口）`)
+ok(nearMin >= 1.2, `S2 近侧和还留着的环线护栏最近 ${nearMin.toFixed(2)}m，并排重复应已去掉`)
 
 const end = near.pts.at(-1)
-ok(latOf(end.x, end.z) > 8.5, `近侧终点 lat=${latOf(end.x, end.z).toFixed(2)}，应收在环线护栏外侧`)
-ok(near.fade1 >= 4, '近侧汇入端有收尖，不留立着的端盖')
+const gEnd = E.frameAt(E.angOf(end.x, end.z))
+const ringX = gEnd.x + gEnd.px * R.RING_RAIL_OFF
+const ringZ = gEnd.z + gEnd.pz * R.RING_RAIL_OFF
+const joinD = Math.hypot(end.x - ringX, end.z - ringZ)
+const endDeg = E.angOf(end.x, end.z) * 180 / Math.PI
+ok(joinD < 0.8, `近侧终点应接到环线内侧护栏上，实际相距 ${joinD.toFixed(2)}m`)
+ok(endDeg > 117 && endDeg < 120, `近侧在缺口起点平头结束，θ=${endDeg.toFixed(2)}°`)
+ok(!near.fade0 && !near.fade1, '近侧不再收成尖头')
 
 const edges = RS.laneEdges(S2.frames, S2.halfW)
 let farOff = 0
@@ -60,18 +66,23 @@ ok(farOff < 1.2, `远侧护栏离桥面外缘最大 ${farOff.toFixed(2)}m，外�
 ok(latOf(far.pts.at(-1).x, far.pts.at(-1).z) > 5.1, '远侧护栏不骑进环线路面')
 
 const inner = rings.filter((l) => l.sector === 2 && Math.abs(latOf(l.pts[0].x, l.pts[0].z) - R.RING_RAIL_OFF) < 0.2)
-const spans = inner.map((l) => [E.angOf(l.pts[0].x, l.pts[0].z), E.angOf(l.pts.at(-1).x, l.pts.at(-1).z)]).sort((a, b) => a[0] - b[0])
-ok(spans.length === 2, `扇区 2 内侧护栏应是缺口两侧两段，实际 ${spans.length}`)
-const gap0 = spans[0][1], gap1 = spans[1][0]
+ok(inner.length >= 1, '扇区 2 内侧护栏还在')
+const endTh = E.angOf(end.x, end.z)
+let gapFrom = null
+for (const l of inner) for (const p of [l.pts[0], l.pts.at(-1)]) {
+  const th = E.angOf(p.x, p.z)
+  if (th < endTh - 0.01 && (gapFrom == null || th > gapFrom)) gapFrom = th
+}
 const R_IN = 255 - R.RING_RAIL_OFF
-const gapArc = Math.abs(gap1 - gap0) * R_IN
-ok(gapArc > 60 && gapArc < 85, `汇入口内侧缺口弧长 ${gapArc.toFixed(1)}m，应在 60–85m（能开进去，又不拆掉整段主路护栏）`)
+const gapArc = (endTh - gapFrom) * R_IN
+const gap0 = gapFrom, gap1 = endTh
+ok(gapArc > 60 && gapArc < 85, `汇入口没有护栏的弧长 ${gapArc.toFixed(1)}m，应在 60–85m`)
 const outer = rings.find((l) => l.sector === 2 && Math.abs(latOf(l.pts[0].x, l.pts[0].z) + R.RING_RAIL_OFF) < 0.2)
 const o0 = E.angOf(outer.pts[0].x, outer.pts[0].z), o1 = E.angOf(outer.pts.at(-1).x, outer.pts.at(-1).z)
 ok(Math.abs(o1 - o0) > 0.7, '扇区 2 外侧护栏不断')
 
-const otherFade = rings.filter((l) => (l.fade0 || l.fade1) && l.sector !== 2)
-ok(otherFade.length === 0, `只有 S2 所在扇区的缺口收尖，其它扇区 ${otherFade.length} 条不该收`)
+const anyFade = R.RAIL_LINES.filter((l) => l.fade0 || l.fade1)
+ok(anyFade.length === 0, `护栏端头保持全高，不应再收尖（${anyFade.length} 条）`)
 
 const { pos, idx } = DG.deckArrays(S2.frames.slice(0, S2.deckOwn + 1), S2.halfW.slice(0, S2.deckOwn + 1), 0.06, edges)
 let maxE = 0, low = 0
@@ -95,6 +106,8 @@ for (const l of lines) railSeg += Math.max(0, l.pts.length - 1)
 const wall = R.railWallMesh()
 console.log(JSON.stringify({
   nearMinM: +nearMin.toFixed(2),
+  joinD: +joinD.toFixed(3),
+  endDeg: +endDeg.toFixed(2),
   nearEnd: [+end.x.toFixed(1), +end.y.toFixed(2), +end.z.toFixed(1)],
   nearLat: +latOf(end.x, end.z).toFixed(2),
   gapArcM: +gapArc.toFixed(2),
