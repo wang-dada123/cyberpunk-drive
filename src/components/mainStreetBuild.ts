@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { MAIN_BUILDINGS, bands, footprint, streetSigns, VIADUCT, ICE, COLD, type Bld } from '../data/mainStreet'
+import { MAIN_BUILDINGS, bands, footprint, streetSigns, VIADUCT, BRIDGE_Z, CLOCK, ICE, COLD, type Bld } from '../data/mainStreet'
 import type { Trim } from './Buildings'
 
 /**
@@ -120,11 +120,24 @@ function extrude(buf: Buf, poly: [number, number][], y0: number, y1: number, bas
     if (outward) { nx = -nx; nz = -nz }
     const [A, B] = outward ? [[bx, bz], [ax, az]] : [[ax, az], [bx, bz]]
     const front = shopSide !== 0 && nx * -shopSide > 0.72 && Math.abs(nz) < 0.5
-    const at: Attr = { ...base, len: L, shop: front ? shopKind : 0, s0: 0.42, s1: Math.max(0.5, L - 0.42) }
-    const q = [
-      [A[0], y0, A[1]], [B[0], y0, B[1]], [B[0], y1, B[1]], [A[0], y1, A[1]],
-    ]
-    buf.quad(q[0], q[1], q[2], q[3], [[0, y0], [L, y0], [L, y1], [0, y1]], at)
+    const at: Attr = { ...base, len: L, shop: 0, s0: 0, s1: 0 }
+    const P = (u: number, y: number) => {
+      const t = u / L
+      return [A[0] + (B[0] - A[0]) * t, y, A[1] + (B[1] - A[1]) * t]
+    }
+    const strip = (u0: number, u1: number, ya: number, yb: number) => {
+      if (yb - ya < 0.04 || u1 - u0 < 0.04) return
+      buf.quad(P(u0, ya), P(u1, ya), P(u1, yb), P(u0, yb), [[u0, ya], [u1, ya], [u1, yb], [u0, yb]], at)
+    }
+    // 朝街的底商挖一个洞，后面另做内凹铺面，不再贴一块米色
+    if (front && shopKind > 0 && y1 > 3.1) {
+      const jamb = Math.min(0.42, L * 0.12)
+      const head = 2.82
+      strip(0, L, y0, y0 + 0.16)
+      strip(0, L, head, y1)
+      strip(0, jamb, y0 + 0.16, head)
+      strip(L - jamb, L, y0 + 0.16, head)
+    } else buf.quad(P(0, y0), P(L, y0), P(L, y1), P(0, y1), [[0, y0], [L, y0], [L, y1], [0, y1]], at)
   }
   const roof: Attr = { ...base, shop: 0, len: 0 }
   for (let i = 1; i < n - 1; i++) {
@@ -219,32 +232,19 @@ float gRough, gMetal, gEnvK; vec3 gEmit;`)
     float pan = bh(vec2(floor(vF.x / 1.5), vSeed));
     vec3 met = ${lin('#141E2A')} * (1.15 + 0.55 * pan);
     met = mix(met, met * 0.35, seam);
+    float curtain = step(vGlass, vConc + 0.25);
     float md = abs(fract(vF.x / 1.5 + 0.5) - 0.5) * 1.5;
-    float mull = 1.0 - smoothstep(0.02, 0.05, md);
-    vec3 gls = mix(${lin('#0A1420')}, ${lin('#1C2836')}, mull);
+    float mullV = 1.0 - smoothstep(0.015, 0.045, md);
+    float row = abs(fract((y - vConc) / 3.2) - 0.5) * 3.2;
+    float mullH = (1.0 - smoothstep(0.06, 0.14, row)) * curtain;
+    float mull = max(mullV, mullH);
+    vec3 gls = mix(${lin('#070E16')}, ${lin('#162030')}, mull);
     base = conc * wC + met * wM + gls * wG;
     base *= vary;
-    gRough = mix(mix(0.92, 0.38, wet), 1.0, wC) * wC + mix(0.38, 0.9, seam) * wM + mix(0.06, 0.7, mull) * wG;
-    gMetal = 0.04 * wC + 0.86 * wM + mix(0.15, 0.55, mull) * wG;
-    gEnvK = 0.25 * wC + mix(1.1, 0.15, seam) * wM + mix(2.0, 0.3, mull) * wG;
-    float inShop = step(0.5, vShop) * step(0.42, y) * step(y, 2.88) * step(vS0, vF.x) * step(vF.x, vS1) * (1.0 - vRoof);
-    if (inShop > 0.5) {
-      float edge = min(min(vF.x - vS0, vS1 - vF.x), min(y - 0.42, 2.88 - y));
-      if (edge < 0.08) {
-        base = ${lin('#1C2836')} * vary; gRough = 0.42; gMetal = 0.8; gEnvK = 0.9; gEmit = vec3(0.0);
-      } else if (vShop > 1.5 && y > 1.62) {
-        float rib = step(0.55, fract(y * 7.0));
-        base = ${lin('#141E2A')} * mix(0.7, 0.25, rib); gRough = 0.48; gMetal = 0.7; gEnvK = 0.5; gEmit = vec3(0.0);
-      } else {
-        float uy = clamp((y - 0.42) / 2.4, 0.0, 1.0);
-        float shelf = smoothstep(0.04, 0.0, abs(fract(uy * 3.2) - 0.12));
-        vec3 warm = ${lin('#FFE6C4')};
-        base = warm * (0.16 + 0.1 * (1.0 - shelf));
-        gEmit = warm * 0.6 * (0.75 + 0.25 * (1.0 - shelf));
-        gRough = 0.85; gMetal = 0.0; gEnvK = 0.2;
-      }
-    }
-    if (vRoof < 0.5 && inShop < 0.5 && y > 4.15) {
+    gRough = mix(mix(0.92, 0.38, wet), 1.0, wC) * wC + mix(0.38, 0.9, seam) * wM + mix(0.08, 0.72, mull) * wG;
+    gMetal = 0.04 * wC + 0.86 * wM + mix(0.08, 0.4, mull) * wG;
+    gEnvK = 0.2 * wC + mix(0.7, 0.12, seam) * wM + mix(mix(0.45, 0.22, curtain), 0.12, mull) * wG;
+    if (vRoof < 0.5 && y > 4.15) {
       float bay = 1.5, winW = 1.3, winH = 2.08, floorH = 3.2, sill = 0.55;
       float yRel = y - 4.15;
       float fl = floor(yRel / floorH);
@@ -262,7 +262,7 @@ float gRough, gMetal, gEnvK; vec3 gEmit;`)
       float cold = step(0.9, bh(vec2(cell, fl + vSeed)));
       vec3 wc = mix(${lin('#4FC3F7')}, ${lin('#E8F4FF')}, cold);
       float curtain = step(0.88, bh(vec2(cell + 4.0, vSeed))) * step(0.6, clamp((sill + winH - ly) / winH, 0.0, 1.0));
-      gEmit = wc * pane * grad * mix(0.9, 0.35, curtain);
+      gEmit = wc * pane * grad * mix(0.62, 0.32, curtain);
       base = mix(base, vec3(0.012, 0.018, 0.028), clamp(pane, 0.0, 1.0));
     }
     if (vRoof > 0.5) { base = vec3(0.012, 0.016, 0.022) * vary; gRough = 0.78; gMetal = 0.12; gEnvK = 0.2; gEmit = vec3(0.0); }
@@ -288,8 +288,13 @@ float gRough, gMetal, gEnvK; vec3 gEmit;`)
     float k = bh(vec2(vSeed, 8.0));
     base = mix(mix(${lin('#C5CED6')}, ${lin('#D9CBB4')}, step(0.33, k)), ${lin('#8EA0AE')}, step(0.66, k));
     gRough = 0.9; gMetal = 0.0; gEnvK = 0.15;
+  } else if (vZone < 6.5) {
+    base = ${lin('#0A1420')}; gEmit = ${lin('#4FC3F7')} * 1.15; gRough = 0.25; gMetal = 0.05; gEnvK = 0.3;
+  } else if (vZone < 7.5) {
+    vec3 warm = ${lin('#FFE6C4')};
+    base = warm * 0.2; gEmit = warm * 0.48; gRough = 0.84; gMetal = 0.0; gEnvK = 0.15;
   } else {
-    base = ${lin('#0A1420')}; gEmit = ${lin('#4FC3F7')} * 1.35; gRough = 0.2; gMetal = 0.1; gEnvK = 0.4;
+    base = ${lin('#121820')} * vary; gRough = 0.92; gMetal = 0.04; gEnvK = 0.18; gEmit = vec3(0.0);
   }
   diffuseColor.rgb = base;
 }`)
@@ -298,17 +303,143 @@ float gRough, gMetal, gEnvK; vec3 gEmit;`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance = gEmit;')
       .replace('#include <lights_fragment_maps>', '#include <lights_fragment_maps>\nradiance *= gEnvK;')
   }
-  m.customProgramCacheKey = () => 'mainStreetV3'
+  m.customProgramCacheKey = () => 'mainStreetV5'
   return m
 }
 
 function sidewalk(bd: Bld, out: number) {
-  // 往街心挪 out 米，仍停在路缘外侧
   return bd.face - bd.side * out
+}
+
+function cylY(buf: Buf, x: number, y: number, z: number, r: number, h: number, n: number, zone: number, seed: number) {
+  const at: Attr = { ...A0(), zone, seed, cx: x, cy: y, cz: z }
+  for (let i = 0; i < n; i++) {
+    const a0 = (i / n) * Math.PI * 2, a1 = ((i + 1) / n) * Math.PI * 2
+    const c0 = Math.cos(a0) * r, s0 = Math.sin(a0) * r, c1 = Math.cos(a1) * r, s1 = Math.sin(a1) * r
+    buf.quad([x + c0, y - h / 2, z + s0], [x + c1, y - h / 2, z + s1], [x + c1, y + h / 2, z + s1], [x + c0, y + h / 2, z + s0], [[0, 0], [1, 0], [1, 1], [0, 1]], at)
+  }
+  const top: number[][] = []
+  for (let i = 0; i < n; i++) top.push([x + Math.cos((i / n) * Math.PI * 2) * r, y + h / 2, z + Math.sin((i / n) * Math.PI * 2) * r])
+  for (let i = 1; i < n - 1; i++) buf.tri(top[0], top[i], top[i + 1], [0, 1, 0], [0, 0], [1, 0], [1, 1], at)
+}
+
+function stool(buf: Buf, x: number, z: number, seed: number) {
+  cylY(buf, x, 0.46, z, 0.16, 0.06, 6, 4, seed)
+  cylY(buf, x, 0.22, z, 0.035, 0.4, 5, 4, seed)
+}
+function pot(buf: Buf, x: number, z: number, seed: number, y = 0) {
+  cylY(buf, x, y + 0.22, z, 0.16, 0.28, 6, 4, seed)
+  prop(buf, x, y + 0.48, z, 0.22, 0.16, 0.1, 0.4, 5, seed)
+  prop(buf, x + 0.06, y + 0.5, z + 0.05, 0.1, 0.18, 0.16, 0.8, 5, seed + 1)
+}
+function bike(buf: Buf, x: number, z: number, seed: number) {
+  cylY(buf, x, 0.32, z - 0.38, 0.28, 0.06, 7, 4, seed)
+  cylY(buf, x, 0.32, z + 0.38, 0.28, 0.06, 7, 4, seed)
+  prop(buf, x, 0.42, z, 0.06, 0.06, 0.7, 0, 4, seed)
+  prop(buf, x, 0.62, z + 0.15, 0.05, 0.32, 0.05, 0.5, 4, seed)
+}
+function crates(buf: Buf, x: number, z: number, seed: number) {
+  prop(buf, x, 0.22, z, 0.48, 0.4, 0.42, 0.15, 4, seed)
+  prop(buf, x + 0.04, 0.52, z + 0.02, 0.36, 0.28, 0.34, -0.2, 4, seed + 1)
+  prop(buf, x - 0.02, 0.74, z - 0.02, 0.26, 0.18, 0.24, 0.4, 4, seed + 2)
+}
+function shelfRow(buf: Buf, x: number, z: number, w: number, seed: number, y0 = 0.55, n = 3) {
+  for (let i = 0; i < n; i++) prop(buf, x, y0 + i * 0.48, z, 0.28, 0.05, w, 0, 1, seed + i)
+}
+
+/** 内凹铺面：框、玻璃、暖墙、各店自己的家具。玻璃进单独的透明网格。 */
+function addShop(buf: Buf, glass: Buf, bd: Bld, trims: Trim[]) {
+  if (bd.side === 0) return
+  const seed = hash(bd.id)
+  const into = (d: number) => bd.face + bd.side * d
+  const zL = bd.z0 + 0.4, zR = bd.z1 - 0.4, zm = (zL + zR) / 2, zw = zR - zL
+  const xFront = into(-0.05)
+  prop(buf, into(1.85), 1.4, zm, 0.08, 2.55, zw, 0, 7, seed)
+  prop(buf, into(0.95), 0.04, zm, 1.8, 0.05, zw, 0, 1, seed)
+  prop(buf, into(0.95), 1.35, zL, 1.8, 2.5, 0.08, 0, 1, seed)
+  prop(buf, into(0.95), 1.35, zR, 1.8, 2.5, 0.08, 0, 1, seed)
+  prop(buf, into(0.55), 2.7, zm, 1.1, 0.06, zw, 0, 1, seed)
+  // 竖梃 + 中横档
+  const xm = into(-0.08)
+  for (const t of [0.33, 0.66]) prop(buf, xm, 1.45, zL + zw * t, 0.05, 2.4, 0.05, 0, 1, seed)
+  prop(buf, xm, 1.45, zm, 0.05, 0.05, zw * 0.92, 0, 1, seed)
+  if (bd.shutter) {
+    for (let i = 0; i < 5; i++) prop(buf, xm, 1.7 + i * 0.2, zm, 0.04, 0.08, zw * 0.86, 0, 1, seed + i)
+  }
+  const gAt = A0()
+  glass.quad(
+    [xFront, 0.22, zL], [xFront, 0.22, zR], [xFront, 2.72, zR], [xFront, 2.72, zL],
+    [[0, 0], [1, 0], [1, 1], [0, 1]], gAt,
+  )
+  const lip = into(-0.72)
+  prop(buf, (bd.face + lip) / 2, 2.98, zm, Math.abs(lip - bd.face), 0.07, zw + 0.2, 0, 1, seed)
+  trims.push({ p: [lip, 2.92, zm], s: [0.035, 0.035, zw + 0.2], ry: Math.PI / 2, color: ICE, k: 1.35, fade: true })
+  const kind = bd.shop?.kind
+  const xi = into(1.35)
+  if (kind === 'noodle') {
+    prop(buf, into(0.55), 1.0, zm, 0.42, 0.9, zw * 0.7, 0, 1, seed)
+    cylY(buf, into(0.5), 1.55, zm - 0.4, 0.16, 0.12, 6, 1, seed)
+    cylY(buf, into(0.5), 1.55, zm + 0.35, 0.14, 0.1, 6, 1, seed)
+    stool(buf, sidewalk(bd, 0.42), zm - 0.85, seed)
+    stool(buf, sidewalk(bd, 0.42), zm + 0.7, seed + 3)
+  } else if (kind === 'repair' && bd.seg !== 'C') {
+    shelfRow(buf, xi, zm, zw * 0.75, seed, 0.7, 4)
+    for (let i = 0; i < 4; i++) prop(buf, xi - bd.side * 0.12, 0.85 + i * 0.4, zm - 0.8 + i * 0.15, 0.04, 0.22, 0.04, 0.3, 1, seed + i)
+    prop(buf, into(0.4), 0.85, zm, 0.4, 0.7, 0.9, 0, 1, seed)
+    bike(buf, sidewalk(bd, 0.5), zm + 0.9, seed)
+    stool(buf, sidewalk(bd, 0.4), zm - 0.7, seed + 2)
+  } else if (kind === 'tea') {
+    shelfRow(buf, xi, zm, zw * 0.8, seed, 0.6, 4)
+    for (let i = 0; i < 5; i++) cylY(buf, xi - bd.side * 0.1, 0.78 + (i % 2) * 0.48, zm - 1 + i * 0.4, 0.06, 0.1, 5, 1, seed + i)
+    cylY(buf, sidewalk(bd, 0.45), 1.35, zm, 0.55, 0.06, 8, 4, seed)
+    prop(buf, sidewalk(bd, 0.45), 0.65, zm, 0.04, 1.2, 0.04, 0, 4, seed)
+    stool(buf, sidewalk(bd, 0.4), zm + 0.9, seed + 4)
+  } else if (kind === 'mart' && bd.seg !== 'C') {
+    prop(buf, xi, 1.15, zm - zw * 0.28, 0.4, 2.0, 0.7, 0, 1, seed)
+    prop(buf, xi - bd.side * 0.18, 1.2, zm - zw * 0.28, 0.02, 1.4, 0.5, 0, 6, seed)
+    shelfRow(buf, xi, zm + 0.45, zw * 0.45, seed, 0.55, 4)
+    bike(buf, sidewalk(bd, 0.48), zm + 0.2, seed + 2)
+  } else if (kind === 'cafe') {
+    prop(buf, into(0.7), 1.05, zm, 0.4, 0.95, zw * 0.72, 0, 1, seed)
+    prop(buf, into(0.48), 1.15, zm, 0.08, 0.04, zw * 0.66, 0, 7, seed)
+    stool(buf, sidewalk(bd, 0.55), zm - 1.1, seed)
+    stool(buf, sidewalk(bd, 0.55), zm + 1.0, seed + 2)
+    prop(buf, sidewalk(bd, 0.7), 0.4, zm + 1.6, 0.4, 0.42, 1.2, 0, 4, seed)
+  } else if (kind === 'books') {
+    for (const o of [-0.7, 0, 0.7]) {
+      prop(buf, xi, 1.25, zm + o, 0.28, 2.2, 0.55, 0, 1, seed + o)
+      shelfRow(buf, xi - bd.side * 0.02, zm + o, 0.48, seed + o * 3, 0.45, 4)
+    }
+    prop(buf, sidewalk(bd, 0.6), 0.4, zm, 0.4, 0.42, 1.3, 0, 4, seed)
+  } else if (kind === 'flora') {
+    pot(buf, into(0.4), zm - 0.8, seed)
+    pot(buf, into(0.45), zm, seed + 2)
+    pot(buf, into(0.4), zm + 0.75, seed + 4)
+    pot(buf, sidewalk(bd, 0.4), zm - 0.3, seed + 6)
+  } else if (bd.seg === 'C') {
+    shelfRow(buf, xi, zm, zw * 0.7, seed, 0.5, 4)
+    prop(buf, xi - bd.side * 0.16, 1.2, zm - 0.3, 0.04, 0.45, 0.7, 0, 6, seed)
+    prop(buf, xi - bd.side * 0.16, 0.85, zm + 0.5, 0.04, 0.32, 0.45, 0, 6, seed + 1)
+    crates(buf, sidewalk(bd, 0.4), zm + 0.7, seed)
+  }
+  if (!kind && bd.shutter) {
+    prop(buf, xi, 1.1, zm, 0.3, 1.6, zw * 0.5, 0, 1, seed)
+  }
+  if (bd.shop) {
+    const boardW = Math.min(zw, bd.shop.word.length * 0.42 + 0.45)
+    if (bd.seg === 'B') prop(buf, into(-1.05), 4.2, zm - 0.05, boardW, 0.5, 0.06, 0, 1, seed)
+    else prop(buf, into(-0.12), 3.35, zm, 0.06, 0.42, boardW, 0, 1, seed)
+  }
+  // 摊位雨棚
+  if (bd.seg === 'C' && bd.shop) {
+    const lipC = into(-1.05)
+    prop(buf, (bd.face + lipC) / 2, 3.15, zm, Math.abs(lipC - bd.face), 0.06, zw + 0.4, 0, 1, seed + 9)
+  }
 }
 
 export function buildMainStreet() {
   const buf = new Buf()
+  const glass = new Buf()
   const trims: Trim[] = []
   for (const bd of MAIN_BUILDINGS) {
     const seed = hash(bd.id)
@@ -324,8 +455,9 @@ export function buildMainStreet() {
     } else {
       extrude(buf, poly, 0, bd.h, base, bd.side, kind)
     }
-    const ys: { y: number; color: string; k: number; fade: boolean }[] = [{ y: bd.h - 0.04, color: COLD, k: 2.2, fade: true }]
-    if (bd.h > 6) ys.push({ y: 4.35, color: ICE, k: 2.05, fade: true })
+    const eaveK = bd.glass ? 1.0 : 1.55
+    const ys: { y: number; color: string; k: number; fade: boolean }[] = [{ y: bd.h - 0.04, color: COLD, k: eaveK, fade: true }]
+    if (bd.h > 6 && !bd.glass) ys.push({ y: 4.35, color: ICE, k: 1.25, fade: true })
     if (bd.type === 'T5') {
       ys.push({ y: 34.4, color: '#00B0FF', k: 1.8, fade: false })
       ys.push({ y: 36.5, color: '#00B0FF', k: 1.8, fade: false })
@@ -337,7 +469,10 @@ export function buildMainStreet() {
     if (bd.type === 'T1' || bd.type === 'T5') {
       prop(buf, mx, bd.h + 0.7, mz, 1.6, 1.4, 1.6, 0, 1, seed)
       prop(buf, mx + 0.2, bd.h + 2.3, mz, 0.08, 1.8, 0.08, 0, 1, seed)
-      prop(buf, mx - 0.5, bd.h + 1.8, mz + 0.4, 0.06, 1.1, 0.06, 0, 1, seed)
+      if (bd.type === 'T5') {
+        prop(buf, mx, bd.h + 4.2, mz, 0.4, 5.6, 0.4, 0, 1, seed)
+        trims.push({ p: [mx, bd.h + 7.1, mz], s: [1.1, 0.08, 1.1], ry: 0, color: ICE, k: 1.7, fade: false })
+      }
     } else if (bd.type === 'T4') {
       for (const o of [-1.2, 0, 1.1]) prop(buf, mx + o * 0.15, bd.h + 0.28, mz + o, 0.7, 0.5, 0.55, 0, 1, seed + o)
     } else if (bd.type === 'T2') {
@@ -349,7 +484,8 @@ export function buildMainStreet() {
       for (const y of floors) {
         const px = bd.face - bd.side * 0.55
         prop(buf, px, y, mz, 1.05, 0.16, w, 0, 1, seed)
-        prop(buf, px - bd.side * 0.46, y + 0.52, mz, 0.06, 0.9, w, 0, 1, seed)
+        prop(buf, px - bd.side * 0.46, y + 0.52, mz, 0.05, 0.85, w, 0, 1, seed)
+        pot(buf, px - bd.side * 0.15, mz + w * 0.28, seed + y, y + 0.12)
         if (bd.laundry) {
           const cloth: Attr = { ...A0(), zone: 5, seed: seed + y, cx: px, cy: y, cz: mz }
           const xh = px - bd.side * 0.2
@@ -364,49 +500,7 @@ export function buildMainStreet() {
         }
       }
     }
-    if (bd.shop && bd.side !== 0) {
-      const w = Math.min(bd.z1 - bd.z0 - 0.8, 5.4)
-      const lip = bd.face - bd.side * 0.78
-      prop(buf, (bd.face + lip) / 2, 3.5, mz, Math.abs(lip - bd.face), 0.08, w, 0, 1, seed)
-      trims.push({
-        p: [lip, 3.44, mz], s: [0.04, 0.04, w], ry: Math.PI / 2,
-        color: ICE, k: 1.6, fade: true,
-      })
-      const door = sidewalk(bd, 0.85)
-      if (bd.shop.kind === 'noodle') {
-        prop(buf, door, 0.45, mz - 0.7, 0.38, 0.9, 0.38, 0, 4, seed)
-        prop(buf, door, 0.45, mz + 0.7, 0.38, 0.9, 0.38, 0, 4, seed)
-      }
-      if (bd.shop.kind === 'repair') {
-        prop(buf, door, 0.42, mz - 0.5, 0.36, 0.84, 0.36, 0, 4, seed)
-        prop(buf, door, 0.45, mz + 0.55, 0.25, 0.7, 1.3, 0.2, 4, seed)
-      }
-      if (bd.shop.kind === 'tea') {
-        prop(buf, door, 1.15, mz, 1.1, 0.08, 1.1, 0, 4, seed)
-        prop(buf, door, 0.55, mz, 0.06, 1.1, 0.06, 0, 4, seed)
-        prop(buf, door, 0.42, mz + 0.8, 0.36, 0.84, 0.36, 0, 4, seed)
-      }
-      if (bd.shop.kind === 'mart') prop(buf, door, 0.48, mz, 0.28, 0.75, 1.35, 0.4, 4, seed)
-      if (bd.shop.kind === 'cafe') {
-        prop(buf, door, 0.55, mz, 0.45, 1.05, 2.4, 0, 4, seed)
-        prop(buf, sidewalk(bd, 1.15), 0.42, mz + 1.6, 0.45, 0.48, 1.3, 0, 4, seed)
-      }
-      if (bd.shop.kind === 'books') prop(buf, sidewalk(bd, 1.15), 0.42, mz, 0.45, 0.48, 1.5, 0, 4, seed)
-      if (bd.shop.kind === 'flora') {
-        prop(buf, door, 0.45, mz - 0.8, 0.55, 0.7, 0.55, 0, 4, seed)
-        prop(buf, door, 0.85, mz - 0.8, 0.7, 0.45, 0.7, 0, 5, seed + 2)
-        prop(buf, door, 0.4, mz + 0.8, 0.5, 0.6, 0.5, 0, 4, seed)
-        prop(buf, door, 0.75, mz + 0.8, 0.65, 0.4, 0.65, 0, 5, seed + 4)
-      }
-      // 店招背板
-      const boardW = Math.min(w, bd.shop.word.length * 0.46 + 0.6)
-      if (bd.seg === 'B') prop(buf, bd.face - bd.side * 1.15, 4.15, mz, boardW, 0.55, 0.08, 0, 1, seed)
-      else prop(buf, bd.face - bd.side * 0.5, 4.55, mz, 0.08, 0.52, boardW, 0, 1, seed)
-    }
-    if (bd.glass && bd.side !== 0) {
-      const lip = bd.face - bd.side * 1.05
-      prop(buf, (bd.face + lip) / 2, 3.55, (bd.z0 + bd.z1) / 2, Math.abs(lip - bd.face), 0.06, bd.z1 - bd.z0 - 0.4, 0, 1, seed)
-    }
+    if ((bd.shop || bd.shutter) && bd.side !== 0) addShop(buf, glass, bd, trims)
   }
 
   // 蒸汽：6 片公告牌，绕面馆门口
@@ -444,40 +538,51 @@ export function buildMainStreet() {
     )
   }
 
-  // 人行天桥，梁底 6.0m，柱子收在楼面内侧
+  // 人行天桥：薄桥面 + 下弦 + 斜腹杆，梁底 6.5m，不在镜头前堆一块板
   {
-    prop(buf, 0, 6.16, 43.7, 18.6, 0.22, 2.15, 0, 1, 4)
-    prop(buf, 0, 6.55, 42.72, 18.2, 0.08, 0.08, 0, 1, 4)
-    prop(buf, 0, 6.55, 44.68, 18.2, 0.08, 0.08, 0, 1, 4)
-    prop(buf, 0, 7.0, 42.68, 18.0, 0.72, 0.06, 0, 1, 4)
-    prop(buf, 0, 7.0, 44.72, 18.0, 0.72, 0.06, 0, 1, 4)
-    prop(buf, -9.15, 3.05, 43.7, 0.42, 6.1, 0.42, 0, 1, 4)
-    prop(buf, 9.15, 3.05, 43.7, 0.42, 6.1, 0.42, 0, 1, 4)
-    prop(buf, 0, 6.95, 42.55, 3.5, 0.62, 0.06, 0, 1, 4)
-    trims.push({ p: [0, 5.96, 43.7], s: [0.035, 0.035, 17.4], ry: Math.PI / 2, color: ICE, k: 1.6, fade: true })
+    const z = BRIDGE_Z
+    const span = 14.2
+    prop(buf, 0, 6.62, z, span, 0.12, 1.15, 0, 1, 4)
+    prop(buf, 0, 6.05, z, span, 0.06, 0.06, 0, 1, 4)
+    for (let i = -6; i <= 6; i++) {
+      prop(buf, i * 1.05, 6.34, z, 0.05, 0.5, 0.05, i * 0.35, 1, 4)
+    }
+    prop(buf, 0, 7.05, z - 0.52, span - 0.4, 0.05, 0.04, 0, 1, 4)
+    prop(buf, 0, 7.05, z + 0.52, span - 0.4, 0.05, 0.04, 0, 1, 4)
+    for (let i = -5; i <= 5; i += 2) {
+      prop(buf, i * 1.15, 6.85, z - 0.52, 0.04, 0.4, 0.04, 0, 1, 4)
+      prop(buf, i * 1.15, 6.85, z + 0.52, 0.04, 0.4, 0.04, 0, 1, 4)
+    }
+    prop(buf, 0, 7.2, z - 0.62, 3.6, 0.08, 0.05, 0, 1, 4)
+    trims.push({ p: [0, 5.95, z], s: [0.03, 0.03, span - 0.4], ry: Math.PI / 2, color: ICE, k: 1.45, fade: true })
   }
 
-  // 时钟柱
-  prop(buf, 9.35, 4, 85.55, 0.72, 8, 0.72, 0, 1, 9)
-  prop(buf, 9.35, 7.55, 85.55, 0.92, 0.7, 0.92, 0, 1, 9)
+  // 时钟柱，站在玻璃街路口南侧人行道，追车往南看得到
+  prop(buf, CLOCK.x, 4, CLOCK.z, 0.9, 8, 0.9, 0, 8, 9)
+  prop(buf, CLOCK.x, 7.55, CLOCK.z, 1.25, 0.85, 1.25, 0, 1, 9)
+  trims.push({ p: [CLOCK.x, 4, CLOCK.z - 0.48], s: [0.08, 7.4, 0.06], ry: 0, color: ICE, k: 1.6, fade: false })
+  trims.push({ p: [CLOCK.x, 7.55, CLOCK.z], s: [1.35, 0.06, 1.35], ry: 0, color: ICE, k: 1.5, fade: false })
 
-  // 斜穿轻轨。梁底 8m。墩在路外。
+  // 斜穿轻轨：混凝土墩 + 两根钢梁 + 薄桥面，交点在镜头前方
   {
     const ax = VIADUCT.a[0], az = VIADUCT.a[1], bx = VIADUCT.b[0], bz = VIADUCT.b[1]
     const dx = bx - ax, dz = bz - az
     const L = Math.hypot(dx, dz)
     const ry = Math.atan2(dx, dz)
     const mx = (ax + bx) / 2, mz = (az + bz) / 2
-    prop(buf, mx, 8.32, mz, 3.25, 0.64, L, ry, 1, 11)
-    prop(buf, ax, 4, az, 1.15, 8, 1.15, 0, 1, 11)
-    prop(buf, bx, 4, bz, 1.15, 8, 1.15, 0, 1, 12)
-    // 梁侧冰蓝线：沿桥向，略偏到一侧
     const nx = -dz / L, nz = dx / L
-    trims.push({
-      p: [mx + nx * 1.55, 8.02, mz + nz * 1.55],
-      s: [0.04, 0.04, L],
-      ry, color: ICE, k: 1.55, fade: false,
-    })
+    prop(buf, mx, 8.55, mz, 2.05, 0.16, L, ry, 1, 11)
+    prop(buf, mx + nx * 0.7, 8.28, mz + nz * 0.7, 0.16, 0.28, L, ry, 1, 11)
+    prop(buf, mx - nx * 0.7, 8.28, mz - nz * 0.7, 0.16, 0.28, L, ry, 1, 11)
+    for (let i = 1; i < 6; i++) {
+      const t = i / 6
+      prop(buf, ax + dx * t, 8.22, az + dz * t, 0.9, 0.08, 0.1, ry, 1, 11)
+    }
+    prop(buf, ax, 4.1, az, 1.3, 8.2, 1.3, 0, 8, 11)
+    prop(buf, ax, 0.4, az, 1.8, 0.7, 1.8, 0, 8, 11)
+    prop(buf, bx, 4.1, bz, 1.3, 8.2, 1.3, 0, 8, 12)
+    prop(buf, bx, 0.4, bz, 1.8, 0.7, 1.8, 0, 8, 12)
+    trims.push({ p: [mx + nx * 0.95, 8.66, mz + nz * 0.95], s: [0.03, 0.03, L], ry, color: ICE, k: 1.2, fade: false })
   }
 
   // 竖招背板
@@ -507,8 +612,9 @@ export function buildMainStreet() {
   }
 
   const geo = buf.geo()
-  const tris = buf.p.length / 9 + trims.length * 12
-  return { geo, trims, tris }
+  const glassGeo = glass.geo()
+  const tris = buf.p.length / 9 + glass.p.length / 9 + trims.length * 12
+  return { geo, glass: glassGeo, trims, tris }
 }
 
 let cache: ReturnType<typeof buildMainStreet> | null = null

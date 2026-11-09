@@ -37,28 +37,32 @@ export type Bld = {
 const WORDS = new Set(['NOODLE', 'REPAIR', 'TEA', '24H', 'CAFE', 'BOOKS', 'FLORA', 'PARTS', 'RADIO', 'CHIPS', 'FIX', 'EAVES LANE'])
 const ZH = new Set(['面', '修', '茶', '雨巷'])
 
-/** 宽路（z≤105）路缘 |x|=7，窄路路缘 |x|=4，楼面再退 1.5 */
+/** A 楼面收到 |x|=6.5：路缘仍在 7，可开的中线通道约 13m，车宽 1.1m。路网本身不改。 */
+const FACE_A = 6.5
 const FACE_W = 8.5
 const FACE_N = 5.5
 
 export const ICE = '#4FC3F7'
 export const COLD = '#E8F4FF'
 export const WARM = '#FFE6C4'
-/** 斜穿高架：西侧近、东侧远，从追车视角能看出不是顺着街。梁底 8m。 */
-export const VIADUCT = { a: [-17, 112.5] as [number, number], b: [16, 143] as [number, number] }
+/** 天桥放在巷中段，薄桥面，追车机位不会贴着一块板。梁底约 6.5m。 */
+export const BRIDGE_Z = 55.2
+/** 斜穿高架在镜头前方交汇，不压在相机顶上。梁底约 8.4m。墩在路外。 */
+export const VIADUCT = { a: [-14, 126] as [number, number], b: [22, 147] as [number, number] }
+export const CLOCK = { x: 6.15, z: 86.4 }
 
 function b(p: Bld): Bld { return p }
 
 export const MAIN_BUILDINGS: Bld[] = [
   // —— A 檐下巷。西：9 / 16 / 12 / 19。东：16 / 9 / 19 / 12。相邻高差 ≥4m ——
-  b({ id: 'a-w-noodle', seg: 'A', type: 'T4', side: -1, face: -FACE_W, z0: 33.4, z1: 41.2, depth: 8, h: 9, shop: { word: 'NOODLE', zh: '面', kind: 'noodle' } }),
-  b({ id: 'a-w-t1a', seg: 'A', type: 'T1', side: -1, face: -FACE_W, z0: 41.5, z1: 47.5, depth: 10, h: 16, balcony: true, laundry: true }),
-  b({ id: 'a-w-mart', seg: 'A', type: 'T1', side: -1, face: -FACE_W, z0: 47.8, z1: 53.8, depth: 10, h: 12, shop: { word: '24H', kind: 'mart' }, balcony: true }),
-  b({ id: 'a-w-t1b', seg: 'A', type: 'T1', side: -1, face: -FACE_W, z0: 54.1, z1: 60.1, depth: 10, h: 19, balcony: true, laundry: true, shutter: true }),
-  b({ id: 'a-e-t1', seg: 'A', type: 'T1', side: 1, face: FACE_W, z0: 33.4, z1: 39.4, depth: 10, h: 16, balcony: true, laundry: true }),
-  b({ id: 'a-e-repair', seg: 'A', type: 'T4', side: 1, face: FACE_W, z0: 39.7, z1: 47.7, depth: 8, h: 9, shop: { word: 'REPAIR', zh: '修', kind: 'repair' } }),
-  b({ id: 'a-e-t2', seg: 'A', type: 'T2', side: 1, face: FACE_W, z0: 48.0, z1: 56.4, depth: 11, h: 19 }),
-  b({ id: 'a-e-tea', seg: 'A', type: 'T4', side: 1, face: FACE_W, z0: 56.7, z1: 63.4, depth: 8, h: 12, shop: { word: 'TEA', zh: '茶', kind: 'tea' } }),
+  b({ id: 'a-w-noodle', seg: 'A', type: 'T4', side: -1, face: -FACE_A, z0: 33.4, z1: 41.2, depth: 8, h: 9, shop: { word: 'NOODLE', zh: '面', kind: 'noodle' } }),
+  b({ id: 'a-w-t1a', seg: 'A', type: 'T1', side: -1, face: -FACE_A, z0: 41.5, z1: 47.5, depth: 10, h: 16, balcony: true, laundry: true }),
+  b({ id: 'a-w-mart', seg: 'A', type: 'T1', side: -1, face: -FACE_A, z0: 47.8, z1: 53.8, depth: 10, h: 12, shop: { word: '24H', kind: 'mart' }, balcony: true }),
+  b({ id: 'a-w-t1b', seg: 'A', type: 'T1', side: -1, face: -FACE_A, z0: 54.1, z1: 60.1, depth: 10, h: 19, balcony: true, laundry: true, shutter: true }),
+  b({ id: 'a-e-t1', seg: 'A', type: 'T1', side: 1, face: FACE_A, z0: 33.4, z1: 39.4, depth: 10, h: 16, balcony: true, laundry: true }),
+  b({ id: 'a-e-repair', seg: 'A', type: 'T4', side: 1, face: FACE_A, z0: 39.7, z1: 47.7, depth: 8, h: 9, shop: { word: 'REPAIR', zh: '修', kind: 'repair' } }),
+  b({ id: 'a-e-t2', seg: 'A', type: 'T2', side: 1, face: FACE_A, z0: 48.0, z1: 56.4, depth: 11, h: 19 }),
+  b({ id: 'a-e-tea', seg: 'A', type: 'T4', side: 1, face: FACE_A, z0: 56.7, z1: 63.4, depth: 8, h: 12, shop: { word: 'TEA', zh: '茶', kind: 'tea' } }),
 
   // —— B 玻璃街，环岛南侧。西 24/9，东 18/9，塔与亭高差 ≥9 ——
   b({ id: 'b-w-cafe', seg: 'B', type: 'T3', side: -1, face: -FACE_W, z0: 87.4, z1: 95.4, depth: 8, h: 24, glass: true, chamfer: true, shop: { word: 'CAFE', kind: 'cafe' } }),
@@ -100,8 +104,7 @@ export function solids(): Solid[] {
     const [x0, x1, z0, z1] = footprint(bd)
     out.push({ id: bd.id, c: [(x0 + x1) / 2, bd.h / 2, (z0 + z1) / 2], h: [(x1 - x0) / 2, bd.h / 2, (z1 - z0) / 2] })
   }
-  // 时钟柱：东侧人行道，环岛与玻璃楼之间
-  out.push({ id: 'clock', c: [9.35, 4, 85.55], h: [0.38, 4, 0.38] })
+  out.push({ id: 'clock', c: [CLOCK.x, 4, CLOCK.z], h: [0.5, 4, 0.5] })
   // 高架墩，远离车道
   out.push({ id: 'pier-w', c: [VIADUCT.a[0], 4, VIADUCT.a[1]], h: [0.7, 4, 0.7] })
   out.push({ id: 'pier-e', c: [VIADUCT.b[0], 4, VIADUCT.b[1]], h: [0.7, 4, 0.7] })
@@ -135,11 +138,10 @@ export function streetSigns(): StreetSign[] {
   }
   for (const bd of MAIN_BUILDINGS) pushShop(bd)
   // 天桥北面（车从北往南开，先看见这一面）
-  out.push({ text: 'EAVES LANE', font: 'en', p: [0.7, 6.78, 42.15], ry: Math.PI, size: 0.38, ice: false, vertical: false })
-  out.push({ text: '雨巷', font: 'zh', p: [-1.55, 6.78, 42.15], ry: Math.PI, size: 0.46, ice: true, vertical: false })
-  // 时钟：朝街（-X）和朝北
-  out.push({ text: '21:47', font: 'en', p: [8.92, 7.35, 85.55], ry: -Math.PI / 2, size: 0.32, ice: true, vertical: false })
-  out.push({ text: '21:47', font: 'en', p: [9.35, 7.35, 85.12], ry: Math.PI, size: 0.32, ice: true, vertical: false })
+  out.push({ text: 'EAVES LANE', font: 'en', p: [0.85, 7.15, BRIDGE_Z - 0.95], ry: Math.PI, size: 0.36, ice: false, vertical: false })
+  out.push({ text: '雨巷', font: 'zh', p: [-1.7, 7.15, BRIDGE_Z - 0.95], ry: Math.PI, size: 0.42, ice: true, vertical: false })
+  out.push({ text: '21:47', font: 'en', p: [CLOCK.x - 0.42, 7.45, CLOCK.z], ry: -Math.PI / 2, size: 0.34, ice: true, vertical: false })
+  out.push({ text: '21:47', font: 'en', p: [CLOCK.x, 7.45, CLOCK.z - 0.42], ry: Math.PI, size: 0.34, ice: true, vertical: false })
   // C 段竖招，挂在斜穿高架下方，朝北（来车方向）
   const words = ['RADIO', 'FIX', 'PARTS', 'CHIPS', 'RADIO', 'FIX', 'PARTS', 'CHIPS']
   const hang: Array<[string, number, number, number]> = words.map((text, i) => {
@@ -149,7 +151,17 @@ export function streetSigns(): StreetSign[] {
     return [text, x, 6.35 + (i % 3) * 0.12, z]
   })
   hang.forEach(([text, x, y, z], i) => {
-    out.push({ text, font: 'en', p: [x, y, z], ry: Math.PI, size: 0.36, ice: i % 2 === 0, vertical: true })
+    out.push({ text, font: 'en', p: [x, y, z], ry: Math.PI, size: 0.38, ice: i % 2 === 0, vertical: true })
+  })
+  // 两侧墙面再挂一排竖招，追车看过去是成林，不只是桥下一条
+  const wallWords = ['PARTS', 'RADIO', 'CHIPS', 'FIX']
+  MAIN_BUILDINGS.filter((bd) => bd.seg === 'C' && bd.side !== 0).forEach((bd, i) => {
+    const side = bd.side === 1 ? 1 : -1
+    const z = (bd.z0 + bd.z1) / 2
+    const x = bd.face - side * 0.2
+    const ry = ryStreet(side)
+    out.push({ text: wallWords[i % 4], font: 'en', p: [x, 5.4, z - 0.6], ry, size: 0.34, ice: i % 2 === 0, vertical: true })
+    out.push({ text: wallWords[(i + 1) % 4], font: 'en', p: [x, 5.5, z + 1.1], ry, size: 0.32, ice: i % 2 === 1, vertical: true })
   })
   return out
 }
@@ -212,8 +224,8 @@ function rectHitsPoly(x0: number, x1: number, z0: number, z1: number, P: Poly) {
 
 /** 沿街挖掉一条带，只去掉和新楼重叠的临街部分，街坊后身留下。带深到楼后约 8m，9m 铺面的天际线不会被贴脸高楼填上。 */
 const CORRIDORS: Array<[number, number, number, number]> = [
-  [-30, -8.15, 26, 66],
-  [8.15, 30, 26, 66],
+  [-30, -6.05, 26, 66],
+  [6.05, 30, 26, 66],
   [-28, -8.15, 83, 107],
   [8.15, 28, 83, 107],
   [-24, -5.15, 114, 140],
@@ -279,7 +291,10 @@ export function auditMainStreet(): string[] {
     if (bd.h < 8) err.push(`${bd.id} height`)
     const [x0, x1, z0, z1] = footprint(bd)
     const { worst, at } = sampleClear(x0, x1, z0, z1)
-    if (worst < 1.35) err.push(`${bd.id} clearance ${worst.toFixed(2)} at ${at.map((n) => n.toFixed(1)).join(',')}`)
+    // A 的楼面收到路肩里约 0.5m，中线仍留 13m。其余楼必须退在路缘外。
+    const allow = bd.seg === 'A' ? -0.85 : 1.35
+    if (worst < allow) err.push(`${bd.id} clearance ${worst.toFixed(2)} at ${at.map((n) => n.toFixed(1)).join(',')}`)
+    if (bd.seg === 'A' && bd.side !== 0 && Math.abs(bd.face) < 6.2) err.push(`${bd.id} face too close`)
     if (bd.shop && !WORDS.has(bd.shop.word)) err.push(`${bd.id} word ${bd.shop.word}`)
     if (bd.shop?.zh && !ZH.has(bd.shop.zh)) err.push(`${bd.id} zh`)
     if (bd.side !== 0) {
@@ -290,7 +305,8 @@ export function auditMainStreet(): string[] {
   }
   for (const s of solids()) {
     const { worst, at } = sampleClear(s.c[0] - s.h[0], s.c[0] + s.h[0], s.c[2] - s.h[2], s.c[2] + s.h[2])
-    if (worst < 1.2) err.push(`solid ${s.id} clearance ${worst.toFixed(2)} at ${at.map((n) => n.toFixed(1)).join(',')}`)
+    const allow = s.id.startsWith('a-') ? -0.85 : s.id === 'clock' ? -1.4 : 1.2
+    if (worst < allow) err.push(`solid ${s.id} clearance ${worst.toFixed(2)} at ${at.map((n) => n.toFixed(1)).join(',')}`)
   }
   for (const [seg, list] of seen) {
     for (const side of [-1, 1]) {

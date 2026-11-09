@@ -94,17 +94,25 @@ function bakeSigns(list: { sign: StreetSign; info: Troika }[]) {
     vertexShader: /* glsl */ `
       #include <common>
       #include <fog_pars_vertex>
+      uniform vec2 uSize;
+      uniform float uGlyph;
       attribute float aIndex;
       attribute vec2 aDim;
       attribute vec3 aColor;
       attribute vec3 aAnchor;
       varying vec2 vUv;
-      varying float vIndex;
       varying vec2 vDim;
       varying vec3 vColor;
+      varying vec4 vTex;
+      varying float vCh;
       varying float vHide;
       void main() {
-        vUv = uv; vIndex = aIndex; vDim = aDim; vColor = aColor;
+        vUv = uv; vDim = aDim; vColor = aColor;
+        float cell = floor(aIndex / 4.0);
+        vCh = mod(aIndex, 4.0);
+        vec2 cellUv = vec2(uGlyph) / uSize;
+        vec2 start = cellUv * vec2(mod(cell, uSize.x / uGlyph), floor(cell / (uSize.x / uGlyph)));
+        vTex = vec4(start, start + cellUv);
         vHide = step(60.0, distance(cameraPosition, aAnchor));
         vec3 pos = vHide > 0.5 ? aAnchor : position;
         vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
@@ -115,30 +123,24 @@ function bakeSigns(list: { sign: StreetSign; info: Troika }[]) {
       #include <common>
       #include <fog_pars_fragment>
       uniform sampler2D uMap;
-      uniform vec2 uSize;
-      uniform float uGlyph;
       uniform float uExp;
       varying vec2 vUv;
-      varying float vIndex;
       varying vec2 vDim;
       varying vec3 vColor;
+      varying vec4 vTex;
+      varying float vCh;
       varying float vHide;
       void main() {
         if (vHide > 0.5) discard;
-        float cols = uSize.x / uGlyph;
-        float cell = floor(vIndex / 4.0);
-        vec2 cellUv = uGlyph / uSize;
-        vec2 start = cellUv * vec2(mod(cell, cols), floor(cell / cols));
-        vec2 tuv = mix(start, start + cellUv, clamp(vUv, 0.001, 0.999));
+        vec2 tuv = mix(vTex.xy, vTex.zw, clamp(vUv, 0.02, 0.98));
         vec4 rgba = texture2D(uMap, tuv);
-        float ch = mod(vIndex, 4.0);
-        float a = ch < 0.5 ? rgba.r : ch < 1.5 ? rgba.g : ch < 2.5 ? rgba.b : rgba.a;
+        float a = vCh < 0.5 ? rgba.r : vCh < 1.5 ? rgba.g : vCh < 2.5 ? rgba.b : rgba.a;
         float maxDim = max(vDim.x, vDim.y);
         float absDist = (1.0 - pow(2.0 * (a > 0.5 ? 1.0 - a : a), 1.0 / uExp)) * maxDim;
         float dist = absDist * (a > 0.5 ? -1.0 : 1.0);
-        float aa = length(fwidth(vUv * vDim)) * 0.5;
+        float aa = max(length(fwidth(vUv * vDim)) * 0.5, maxDim * 0.04);
         float alpha = smoothstep(aa, -aa, dist);
-        if (alpha < 0.02) discard;
+        if (alpha < 0.04) discard;
         gl_FragColor = vec4(vColor, alpha);
         #include <fog_fragment>
       }`,
@@ -162,8 +164,9 @@ function SignBake({ signs }: { signs: StreetSign[] }) {
           font={s.font === 'zh' ? FONT_ZH : FONT_EN}
           characters={s.font === 'zh' ? CHARS_ZH : CHARS_EN}
           fontSize={s.size}
-          letterSpacing={0.15}
-          lineHeight={0.96}
+          sdfGlyphSize={128}
+          letterSpacing={0.12}
+          lineHeight={1.05}
           anchorX="center"
           anchorY="middle"
           onSync={(troika) => {
@@ -182,18 +185,29 @@ function SignBake({ signs }: { signs: StreetSign[] }) {
 
 export function MainStreet() {
   const gl = useThree((s) => s.gl)
-  const geo = useMemo(() => getMainStreet().geo, [])
+  const built = useMemo(() => getMainStreet(), [])
   const mat = useMemo(() => {
     const m = makeStreetMat()
     m.envMap = facadeEnvPMREM(gl)
     return m
   }, [gl])
+  const glassMat = useMemo(() => new THREE.MeshStandardMaterial({
+    color: '#b7d4ea',
+    transparent: true,
+    opacity: 0.28,
+    roughness: 0.04,
+    metalness: 0.2,
+    depthWrite: false,
+    envMap: facadeEnvPMREM(gl),
+    envMapIntensity: 1.1,
+  }), [gl])
   const signs = useMemo(() => streetSigns(), [])
   const boxes = useMemo(() => solids(), [])
   useFrame((_, dt) => { streetTime.value += dt })
   return (
     <group>
-      <mesh geometry={geo} material={mat} frustumCulled={false} />
+      <mesh geometry={built.geo} material={mat} frustumCulled={false} />
+      <mesh geometry={built.glass} material={glassMat} frustumCulled={false} renderOrder={1} />
       <SignBake signs={signs} />
       <RigidBody type="fixed" colliders={false}>
         {boxes.map((b) => <CuboidCollider key={b.id} args={b.h} position={b.c} />)}
