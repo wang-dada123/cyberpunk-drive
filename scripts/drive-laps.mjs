@@ -198,4 +198,7 @@ const result = await page.evaluate(async ([FILTER, MODES, SETTLE]) => {
 }, [FILTER, MODES, SETTLE])
 
 writeFileSync(process.env.OUT || '/tmp/drive-laps.json', JSON.stringify(result, null, 1))
-await browser.close()
+// 结果已经落盘。关掉浏览器如果抛错，不能把一整轮 0 复位的结果记成失败。
+try { await ctx.close() } catch (e) { console.error('context close', e instanceof Error ? e.message : e) }
+try { await browser.close() } catch (e) { console.error('browser close', e instanceof Error ? e.message : e) }
+process.exit(0)

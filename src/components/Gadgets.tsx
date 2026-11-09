@@ -6,9 +6,9 @@ import { carPose } from './Car'
 import { portPool, restorePortProps, shovePortProps } from './PortDistrict'
 import {
   COLD, DECK, DIM, DOOR, DYNAMIC_TOTAL, FEST_AT, FEST_PORT_FROM, GARAGE_N, GATE, ICE, JUMP, LIGHTS, LIGHT_N,
-  PIPES, SHOWCASE, STALLS, STALL_HIT, STALL_N, STEEL,
+  PIPES, SHOWCASE, SHOWCASE_MARK, STALLS, STALL_HIT, STALL_N, STEEL,
   bitCount, e8Beacon, garageBoxPos, garageSector, inGate, lightIndexNear, onE8, onS2, roofPoint, s1Points, s2Marks,
-  stallSector, withFlag, withLight, withStall,
+  showcaseLit, stallSector, withFlag, withLight, withStall,
 } from '../data/gadgets'
 import { getProgress, resetProgress, setProgress } from '../utils/progressStore'
 import { tickCard } from '../utils/lightCard'
@@ -33,6 +33,22 @@ const vcMat = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: fals
 const iceMat = new THREE.MeshBasicMaterial({ color: ICE, toneMapped: false })
 const dimMat = new THREE.MeshBasicMaterial({ color: DIM, toneMapped: false })
 const ringMat = new THREE.MeshBasicMaterial({ color: DIM, toneMapped: false })
+const showcaseLabelMap = (() => {
+  const c = document.createElement('canvas')
+  c.width = 512
+  c.height = 256
+  const g = c.getContext('2d')!
+  g.clearRect(0, 0, 512, 256)
+  g.fillStyle = '#E8F4FF'
+  g.font = '700 168px "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "WenQuanYi Micro Hei", sans-serif'
+  g.textAlign = 'center'
+  g.textBaseline = 'middle'
+  g.fillText(SHOWCASE_MARK, 256, 136)
+  const t = new THREE.CanvasTexture(c)
+  t.colorSpace = THREE.SRGBColorSpace
+  return t
+})()
+const showcaseLabelMat = new THREE.MeshBasicMaterial({ map: showcaseLabelMap, transparent: true, toneMapped: false, depthWrite: false })
 const doorMat = new THREE.MeshBasicMaterial({ color: STEEL, toneMapped: false })
 const festMat = new THREE.MeshBasicMaterial({ color: ICE, toneMapped: false })
 const offCol = new THREE.Color(DIM)
@@ -201,6 +217,8 @@ export function Gadgets() {
   const markRef = useRef<THREE.InstancedMesh>(null)
   const doorRef = useRef<THREE.Mesh>(null)
   const doorBody = useRef<RapierRigidBody>(null)
+  const ringRef = useRef<THREE.Mesh>(null)
+  const markMeshRef = useRef<THREE.Mesh>(null)
 
   useLayoutEffect(() => {
     const paint = (im: THREE.InstancedMesh | null, n: number, at: (i: number) => { x: number; y: number; z: number; s?: number }) => {
@@ -261,9 +279,11 @@ export function Gadgets() {
 
   useFrame((_, dt) => {
     const p = getProgress()
-    const lit = bitCount(p.lights, LIGHT_N) === LIGHT_N
+    const lit = showcaseLit(p.lights)
     ringMat.color.copy(lit ? onCol : offCol)
     if (lit) ringMat.color.lerp(iceCol, 0.25)
+    if (ringRef.current && ringRef.current.visible !== lit) ringRef.current.visible = lit
+    if (markMeshRef.current && markMeshRef.current.visible !== lit) markMeshRef.current.visible = lit
     doorMat.color.copy(p.gate ? iceCol : offCol)
     const door = doorRef.current
     if (door) {
@@ -388,6 +408,7 @@ export function Gadgets() {
     w.__gadget = {
       reset: restoreGadgets,
       progress: getProgress,
+      setProgress,
       stats: gadgetStats,
       place(x: number, y: number, z: number, yaw = 0) {
         const rb = w.__car
@@ -428,8 +449,11 @@ export function Gadgets() {
   return (
     <group name="c8-gadgets" userData={{ dynamic: true }}>
       <mesh geometry={staticGeo} material={vcMat} />
-      <mesh position={[SHOWCASE.x, SHOWCASE.y, SHOWCASE.z]} material={ringMat}>
+      <mesh ref={ringRef} position={[SHOWCASE.x, SHOWCASE.y, SHOWCASE.z]} material={ringMat} visible={false}>
         <torusGeometry args={[SHOWCASE.r, SHOWCASE.tube, 6, 24]} />
+      </mesh>
+      <mesh ref={markMeshRef} position={[SHOWCASE.x, SHOWCASE.y, SHOWCASE.z + 0.2]} material={showcaseLabelMat} visible={false}>
+        <planeGeometry args={[2.6, 1.3]} />
       </mesh>
       <instancedMesh ref={orbRef} args={[undefined, undefined, LIGHT_N]} material={iceMat} frustumCulled={false}>
         <octahedronGeometry args={[0.42]} />

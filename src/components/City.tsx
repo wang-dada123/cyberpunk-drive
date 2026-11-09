@@ -313,9 +313,11 @@ function SegRoad({ s, y }: { s: Seg; y: number }) {
   const [ax, az] = s.a, [bx, bz] = s.b
   const len = Math.hypot(bx - ax, bz - az) + s.w * 0.5
   const ry = Math.atan2(bx - ax, bz - az)
+  // 整条街原来是两个三角。相机贴着路面时，一条上百米的斜边会变成前景里的大三角面。
+  const seg = Math.max(1, Math.ceil(len / 12))
   return (
     <mesh position={[(ax + bx) / 2, y, (az + bz) / 2]} rotation={[-Math.PI / 2, 0, ry]} material={s.dim ? roadDimMat : roadMat}>
-      <planeGeometry args={[s.w, len]} />
+      <planeGeometry args={[s.w, len, 1, seg]} />
     </mesh>
   )
 }
@@ -412,17 +414,47 @@ function makeStalls() {
   return { stalls, canopies, lanterns }
 }
 
-/** 地面：西南隧道处挖洞（视觉 Shape 带洞 + 碰撞体用隧道坐标系下 4 块旋转长方体拼接） */
+/** 地面：网格铺面，西南隧道处留洞。原先 ShapeGeometry 只有 8 个三角、最长边约 1.3km，贴地看会是一整块灰三角。碰撞仍是隧道坐标系下的盒子。 */
 function Ground({ G }: { G: number }) {
   const { dir, R0, W } = TUNNEL
   const R1 = TUNNEL_R1, hw = W / 2
   const geo = useMemo(() => {
     const S = G + 10
-    const sh = new THREE.Shape([new THREE.Vector2(-S, -S), new THREE.Vector2(S, -S), new THREE.Vector2(S, S), new THREE.Vector2(-S, S)])
-    const nx = -dir[1], nz = dir[0] // 隧道横向
-    const pt = (u: number, v: number) => new THREE.Vector2(dir[0] * u + nx * v, -(dir[1] * u + nz * v)) // shape(x,y) → world(x, -z)
-    sh.holes.push(new THREE.Path([pt(R0, -hw), pt(R0, hw), pt(R1, hw), pt(R1, -hw)]))
-    return new THREE.ShapeGeometry(sh)
+    const nx = -dir[1], nz = dir[0]
+    const inHole = (x: number, z: number) => {
+      const u = x * dir[0] + z * dir[1]
+      const v = x * nx + z * nz
+      return u > R0 - 0.4 && u < R1 + 0.4 && Math.abs(v) < hw + 0.4
+    }
+    const pos: number[] = []
+    const idx: number[] = []
+    const emit = (x0: number, z0: number, x1: number, z1: number, depth: number) => {
+      const corners: [number, number][] = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]]
+      const inside = corners.filter(([x, z]) => inHole(x, z)).length
+      if (inside === 4) return
+      if (inside > 0 && depth < 4 && x1 - x0 > 2) {
+        const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2
+        emit(x0, z0, mx, mz, depth + 1)
+        emit(mx, z0, x1, mz, depth + 1)
+        emit(x0, mz, mx, z1, depth + 1)
+        emit(mx, mz, x1, z1, depth + 1)
+        return
+      }
+      if (inside > 0 && inHole((x0 + x1) / 2, (z0 + z1) / 2)) return
+      const b = pos.length / 3
+      pos.push(x0, 0, z0, x1, 0, z0, x1, 0, z1, x0, 0, z1)
+      idx.push(b, b + 1, b + 2, b, b + 2, b + 3)
+    }
+    const cell = 20
+    for (let x = -S; x < S - 1e-4; x += cell) {
+      for (let z = -S; z < S - 1e-4; z += cell) emit(x, z, Math.min(S, x + cell), Math.min(S, z + cell), 0)
+    }
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+    g.setIndex(idx)
+    g.computeVertexNormals()
+    g.computeBoundingSphere()
+    return g
   }, [G, dir, R0, R1, hw])
   // 隧道坐标系：u 沿大道、v 横向；旋转使局部 +Z = dir
   const ry = Math.atan2(dir[0], dir[1])
@@ -435,7 +467,7 @@ function Ground({ G }: { G: number }) {
         <CuboidCollider args={[hw, 0.5, (R0 + E) / 2]} position={[0, -0.5, (R0 - E) / 2]} />
         <CuboidCollider args={[hw, 0.5, (E - R1) / 2]} position={[0, -0.5, (R1 + E) / 2]} />
       </RigidBody>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} geometry={geo} material={groundMat} />
+      <mesh geometry={geo} material={groundMat} />
     </>
   )
 }
