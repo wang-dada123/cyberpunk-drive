@@ -292,7 +292,9 @@ function joinS2Near(lines: RailLine[]) {
   near.fade0 = undefined
   near.fade1 = undefined
 
-  // 近侧 6m 以内的环线内侧点删掉，追尾镜头里不再并排一条半截护栏
+  // 只拿掉和这段弯接重合的环线内侧点。再往外的环线护栏留着，车在环上不会从内侧滑出去。
+  const thLo = Math.min(th0, thEnd) - 0.01
+  const thHi = Math.max(th0, thEnd) + 0.015
   for (const l of lines) {
     if (l.lane != null || l.pts.length < 2) continue
     const lat0 = (() => {
@@ -301,16 +303,10 @@ function joinS2Near(lines: RailLine[]) {
       return (p.x - g.x) * g.px + (p.z - g.z) * g.pz
     })()
     if (Math.abs(lat0 - RING_RAIL_OFF) > 0.4) continue
-    const keep: RailPt[] = []
-    for (const p of l.pts) {
-      let d = Infinity
-      for (let i = 0; i < near.pts.length; i += 2) {
-        const q = near.pts[i]
-        d = Math.min(d, Math.hypot(p.x - q.x, p.z - q.z))
-      }
-      if (d > 8) keep.push(p)
-    }
-    l.pts = keep
+    l.pts = l.pts.filter((p) => {
+      const th = angOf(p.x, p.z)
+      return th < thLo || th > thHi
+    })
   }
   for (let i = lines.length - 1; i >= 0; i--) {
     if (lines[i].pts.length < 2) lines.splice(i, 1)
