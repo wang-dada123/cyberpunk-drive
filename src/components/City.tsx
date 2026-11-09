@@ -15,6 +15,9 @@ import { PortDistrict } from './PortDistrict'
 import { Gadgets } from './Gadgets'
 import { Structures } from './Structures'
 import { Buildings, TrimStrips, measureFacades, type Prism, type Trim } from './Buildings'
+import { clipMainStreet } from '../data/mainStreet'
+import { getMainStreet } from './mainStreetBuild'
+import { MainStreet } from './MainStreet'
 import { neonEnvTex } from '../utils/look'
 import { outerLayout, innerLayout, area as polyArea, type Poly } from '../data/outerLayout'
 const cen = (P: Poly): [number, number] => { let x = 0, z = 0; for (const [a, b] of P) { x += a / P.length; z += b / P.length } return [x, z] }
@@ -152,12 +155,12 @@ function buildCity() {
   const innerKeep: Poly[] = []
   for (const L of byD.values()) innerKeep.push(...L.sort((p, q) => polyArea(q) - polyArea(p)).slice(0, 8))
   const EAVE = ['#E8F4FF', '#4FC3F7']
-  const addBlock = (poly: Poly, h: number, seed: number, isInner: boolean) => {
+  const addBlock = (poly: Poly, h: number, seed: number, isInner: boolean, fixed?: { mat: number; color: string }) => {
     const [cx, cz] = cen(poly), did = districtAt(cx, cz)
-    prisms.push({ poly, h, mat: pickMat(r()), win: winCol(cx, cz), seed })
+    prisms.push({ poly, h, mat: fixed ? fixed.mat : pickMat(r()), win: winCol(cx, cz), seed })
     plots.push({ poly, h })
     // 屋顶檐线 + 离地 4.6m 腰线，截面 4×4cm。两端各伸出 10cm，转角才能接上（同色重叠不会闪）。强度在 TrimStrips 里按距离 2.2→1.4
-    const c = EAVE[r() < 0.5 ? 0 : 1]
+    const c = fixed ? fixed.color : EAVE[r() < 0.5 ? 0 : 1]
     const ys = [h - 0.02]
     if (h > 5.2) ys.push(4.6)
     for (let k = 0; k < poly.length; k++) {
@@ -168,7 +171,7 @@ function buildCity() {
     }
     // 内圈：最长边朝路一侧挂招牌（每区 ≤6）
     const n = signN.get(did) ?? 0
-    if (isInner && n < 3 && h > 9) {
+    if (!fixed && isInner && n < 3 && h > 9) {
       let bi = 0, bl = 0
       for (let k = 0; k < poly.length; k++) { const a = poly[k], b = poly[(k + 1) % poly.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L > bl) { bl = L; bi = k } }
       const a = poly[bi], b = poly[(bi + 1) % poly.length]
@@ -179,8 +182,17 @@ function buildCity() {
       signs.push({ p: [a[0] + (b[0] - a[0]) * t + nx * 0.35, Math.min(h - 1.5, 3.2 + word.length * 0.31), a[1] + (b[1] - a[1]) * t + nz * 0.35], ry: Math.atan2(nx, nz), text: word })
     }
   }
-  innerKeep.forEach((P, i) => { const [cx, cz] = cen(P); addBlock(P, 10 + r() * 14 + Math.min(Math.hypot(cx, cz) / 8, 14) * r(), 300 + i, true) })
-  outerLayout().forEach((P, i) => addBlock(P, 14 + r() * 16 + r() * 10, 500 + i, false))
+  // 主街临街被走廊挖掉时，随机数仍按「原来这一块」消耗一次，后面的楼高不变。招牌若本来挂在被挖掉的临街面，就不再生成。
+  const place = (P: Poly, h: number, seed: number, isInner: boolean) => {
+    const parts = clipMainStreet(P)
+    if (parts.length === 1 && parts[0] === P) { addBlock(P, h, seed, isInner); return }
+    const fixed = { mat: pickMat(r()), color: EAVE[r() < 0.5 ? 0 : 1] }
+    const [cx, cz] = cen(P), did = districtAt(cx, cz), n = signN.get(did) ?? 0
+    if (isInner && n < 3 && h > 9) { signN.set(did, n + 1); r() }
+    parts.forEach((Q, k) => addBlock(Q, h, seed + k * 0.17, isInner, fixed))
+  }
+  innerKeep.forEach((P, i) => { const [cx, cz] = cen(P); place(P, 10 + r() * 14 + Math.min(Math.hypot(cx, cz) / 8, 14) * r(), 300 + i, true) })
+  outerLayout().forEach((P, i) => place(P, 14 + r() * 16 + r() * 10, 500 + i, false))
   { // 作品街尽端实体塔 ≥80m：与其它楼同一套三段立面 + 竖窗（作品街 #00B0FF ×0.70）。腰线每 12m，#00B0FF ×1.8，不随近距离压暗
     const T = END_TOWER, poly: Poly = [[T.x0, T.z1], [T.x1, T.z1], [T.x1, T.z0], [T.x0, T.z0]]
     addBlock(poly, T.h, 990, false)
@@ -192,7 +204,8 @@ function buildCity() {
       trims.push({ p: [(a[0] + b[0]) / 2 + nx * 0.04, y, (a[1] + b[1]) / 2 + nz * 0.04], s: [0.04, 0.04, L + 0.20], ry: Math.atan2(b[0] - a[0], b[1] - a[1]), color: '#00B0FF', k: 1.8, fade: false })
     }
   }
-  if (import.meta.env.DEV) Object.assign(window, { __bodies: bodies, __segs: segs, __plots: plots, __facadeMix: measureFacades(prisms), __trimN: trims.length })
+  trims.push(...getMainStreet().trims)
+  if (import.meta.env.DEV) Object.assign(window, { __bodies: bodies, __segs: segs, __plots: plots, __facadeMix: measureFacades(prisms), __trimN: trims.length, __streetTris: getMainStreet().tris })
   // 路面导向光带：沿有 guide 的街道中线
   for (const s of segs) {
     if (!s.guide) continue
@@ -523,6 +536,7 @@ export function City() {
       <Boxes items={glows} material={glowMat} />
       {/* 建筑（实例化）+ 灯带 + 导向带 + 箭头 */}
       <Buildings list={prisms} />
+      <MainStreet />
       <Signs list={signs} />
       <TrimStrips items={trims} />
       <Boxes items={strips} material={glowMat} />
