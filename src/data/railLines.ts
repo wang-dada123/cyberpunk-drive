@@ -1,6 +1,6 @@
 import { ELEV_W, RAMPS, RING_FRAMES, RING_PER, frameAt, type Ramp } from './expansionLayout'
 import { laneEdges, rampRailSpan } from './rampSurface'
-import { S2_BRIDGE } from './s2Bridge'
+import { S2_BRIDGE, s2Dist } from './s2Bridge'
 import { SPIRAL, spiralFrame } from './mapLayout'
 import { J2_H, j2Guard } from './expansionLayout'
 import { rampKeep } from './deckGeom'
@@ -10,7 +10,15 @@ import { rampKeep } from './deckGeom'
  * 高架：外侧整圈不断；内侧只在匝道汇入口让开。匝道：护栏走到桥面边缘就收住，不斜插进桥面。
  */
 export type RailPt = { x: number; y: number; z: number; f: number; up?: number }
-export type RailLine = { pts: RailPt[]; sector: number; lane?: number; side?: number }
+export type RailLine = {
+  pts: RailPt[]
+  sector: number
+  lane?: number
+  side?: number
+  /** 汇入口端头：从这一端起这么多米内，视觉高度收到路面，避免立着的端盖 */
+  fade0?: number
+  fade1?: number
+}
 
 const HW = ELEV_W / 2
 /** 护栏中线离路面中线 */
@@ -64,16 +72,18 @@ function rampLines(ramp: Ramp, r: number, skip?: (x: number, z: number) => boole
       const z = f.z + f.pz * side * off
       const ring = ringLat(x, z)
       // 进到高架护栏线以内（含护栏本身）就收住：不在桥面上斜插
-      // S2（1106）：近侧护栏离环线内护栏 <1.6m 就收住，汇入段只留环线这一条主路护栏，不再两条并排
+      // S2 近侧（更靠近环线中线的那条）：离环线护栏中线还剩 S2_NEAR_CLEAR 米就收住。
+      // 1106 的 1.6m 之后仍有约 4m 并排（最近 1.7m），端头插在环线内护栏旁边。
       const near = r === RAMPS.length && Math.abs(ring.lat) < Math.abs(ringLat(f.x, f.z).lat)
-      const onDeck = Math.abs(ring.lat) < RING_RAIL_OFF + (near ? 1.6 : 0.35) && Math.abs(f.y - ring.y) < 1.6
+      const clear = near ? S2_NEAR_CLEAR : 0.35
+      const onDeck = Math.abs(ring.lat) < RING_RAIL_OFF + clear && Math.abs(f.y - ring.y) < 1.6
       if (skip && skip(x, z)) {
-        if (cur.length > 1) { out.push({ pts: cur, sector: ramp.sector, side }); stopMax = Math.max(stopMax, i) }
+        if (cur.length > 1) { out.push(rampRail(cur, ramp.sector, side, r)); stopMax = Math.max(stopMax, i) }
         cur = []
         continue
       }
       if (f.y < 0.9 || onDeck) {
-        if (cur.length > 1) { out.push({ pts: cur, sector: ramp.sector, side }); stopMax = Math.max(stopMax, i) }
+        if (cur.length > 1) { out.push(rampRail(cur, ramp.sector, side, r)); stopMax = Math.max(stopMax, i) }
         cur = []
         if (onDeck) break
         continue
@@ -83,10 +93,34 @@ function rampLines(ramp: Ramp, r: number, skip?: (x: number, z: number) => boole
       if (last && (x - last.x) * f.tx + (z - last.z) * f.tz < 0.3) continue
       cur.push({ x, y: f.y, z, f: i })
     }
-    if (cur.length > 1) { out.push({ pts: cur, sector: ramp.sector, side }); stopMax = deckOwn }
+    if (cur.length > 1) { out.push(rampRail(cur, ramp.sector, side, r)); stopMax = deckOwn }
   }
   rampStop[r] = Math.min(deckOwn, stopMax + 2)
   return out
+}
+
+/** S2 近侧护栏在离环线护栏中线还剩这么多米时收住，不再并排插进汇入口。 */
+const S2_NEAR_CLEAR = 3.4
+/** 汇入口端头收成贴地，不留立着的端盖。只收汇入端，屋顶那头不收。 */
+const S2_TIP = 6
+
+function rampRail(pts: RailPt[], sector: number, side: number, r: number): RailLine {
+  const line: RailLine = { pts, sector, side }
+  if (r === RAMPS.length) line.fade1 = S2_TIP
+  return line
+}
+
+/** 内侧护栏在 S2 汇入口缺口两端收尖。扇区拼缝两端的邻点仍 keep，不收。其它匝道缺口不动。 */
+function ringRail(pts: RailPt[], sector: number, side: number, keep: boolean[], N: number): RailLine {
+  const line: RailLine = { pts, sector }
+  if (side === 1) {
+    const f0 = Math.round(pts[0].f)
+    const f1 = Math.round(pts[pts.length - 1].f)
+    const atS2 = (p: RailPt) => s2Dist(p.x, p.z, S2_BRIDGE.frames.length) < 22
+    if (!keep[(f0 - 1 + N) % N] && atS2(pts[0])) line.fade0 = 5
+    if (!keep[(f1 + 1) % N] && atS2(pts[pts.length - 1])) line.fade1 = 5
+  }
+  return line
 }
 
 function ringLines(): RailLine[] {
@@ -105,11 +139,11 @@ function ringLines(): RailLine[] {
       let cur: RailPt[] = []
       for (let i = s * RING_PER; i <= Math.min(N, (s + 1) * RING_PER); i++) {
         const k = i % N
-        if (!keep[k]) { if (cur.length > 1) out.push({ pts: cur, sector: s }); cur = []; continue }
+        if (!keep[k]) { if (cur.length > 1) out.push(ringRail(cur, s, side, keep, N)); cur = []; continue }
         const f = RING_FRAMES[k]
         cur.push({ x: f.x + f.px * side * RING_RAIL_OFF, y: f.y, z: f.z + f.pz * side * RING_RAIL_OFF, f: k, up: j2Guard(f.theta) })
       }
-      if (cur.length > 1) out.push({ pts: cur, sector: s })
+      if (cur.length > 1) out.push(ringRail(cur, s, side, keep, N))
     }
   }
   return out
@@ -218,13 +252,30 @@ export const RAIL_LINES: RailLine[] = [...ringLines().map((l) => smoothLine(l, n
 export const WALL_H = 2.3
 /** J2 落地区：墙（和看得见的护栏）加高这么多，车跳起最高点也翻不过去 */
 export const J2_WALL_UP = 1.6 + J2_H
+/** 端头收尖的那一段不立全高墙，避免看不见的墙伸进汇入口。 */
+function wallPts(line: RailLine): RailPt[] {
+  if (!line.fade0 && !line.fade1) return line.pts
+  const pts = line.pts
+  const s = [0]
+  for (let i = 1; i < pts.length; i++) s.push(s[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z))
+  const total = s[s.length - 1]
+  const out: RailPt[] = []
+  for (let i = 0; i < pts.length; i++) {
+    const k0 = line.fade0 ? Math.min(1, s[i] / line.fade0) : 1
+    const k1 = line.fade1 ? Math.min(1, (total - s[i]) / line.fade1) : 1
+    if (Math.min(k0, k1) >= 0.55) out.push(pts[i])
+  }
+  return out.length > 1 ? out : pts
+}
+
 export function railWallMesh() {
   const v: number[] = []
   const idx: number[] = []
   for (const line of RAIL_LINES) {
+    const pts = wallPts(line)
     const base = v.length / 3
-    for (const p of line.pts) v.push(p.x, p.y - 0.3, p.z, p.x, p.y + WALL_H + (p.up ?? 0) * J2_WALL_UP, p.z)
-    for (let i = 0; i < line.pts.length - 1; i++) {
+    for (const p of pts) v.push(p.x, p.y - 0.3, p.z, p.x, p.y + WALL_H + (p.up ?? 0) * J2_WALL_UP, p.z)
+    for (let i = 0; i < pts.length - 1; i++) {
       const k = base + i * 2
       idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2)
     }

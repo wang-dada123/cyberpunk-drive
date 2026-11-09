@@ -30,6 +30,12 @@ export const LIGHT_ZS = [-88, -104, -120, -136, -152, -168, -184, -196] as const
 export const LIGHT_R = 2.5
 export const LIGHTS = LIGHT_ZS.map((z) => ({ x: 0, y: 1.35, z }))
 export const SHOWCASE = { x: 0, y: 7.4, z: -188, r: 3.5, tube: 0.16 }
+/** 八个光点集齐后才出现的环心字。未集齐时环本身不画。 */
+export const SHOWCASE_MARK = '完成'
+
+export function showcaseLit(mask: number) {
+  return bitCount(mask, LIGHT_N) === LIGHT_N
+}
 
 /** 东街北侧灯笼摊，x=108–143，放在路面北缘，不和原静态摊位盒子重叠。 */
 export const STALL_XS = [108, 115, 122, 129, 136, 143] as const

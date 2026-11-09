@@ -66,8 +66,16 @@ function buildRails(lines: RailLine[], pillarFrames: RoadFrame[] | null) {
   const idx: number[] = []
   for (const line of lines) {
     const base = pos.length / 3
-    for (const p of line.pts) {
-      pos.push(p.x, p.y + 0.06, p.z, p.x, p.y + 0.9 + (p.up ?? 0) * J2_WALL_UP, p.z)
+    const n = line.pts.length
+    const arc = [0]
+    for (let i = 1; i < n; i++) arc.push(arc[i - 1] + Math.hypot(line.pts[i].x - line.pts[i - 1].x, line.pts[i].z - line.pts[i - 1].z))
+    const total = arc[n - 1] || 1
+    for (let i = 0; i < n; i++) {
+      const p = line.pts[i]
+      const k0 = line.fade0 ? Math.min(1, arc[i] / line.fade0) : 1
+      const k1 = line.fade1 ? Math.min(1, (total - arc[i]) / line.fade1) : 1
+      const k = Math.max(0.04, Math.min(k0, k1))
+      pos.push(p.x, p.y + 0.06, p.z, p.x, p.y + 0.06 + 0.84 * k + (p.up ?? 0) * J2_WALL_UP * k, p.z)
       col.push(STEEL.r, STEEL.g, STEEL.b, ICE.r, ICE.g, ICE.b)
     }
     for (let i = 0; i < line.pts.length - 1; i++) {
