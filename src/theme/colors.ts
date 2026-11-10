@@ -14,8 +14,8 @@ export const colors = {
 } as const
 
 export const bloom = {
-  intensity: 0.8,
-  threshold: 0.75,
+  intensity: 0.65,
+  threshold: 1.02,
   tail: '#00B0FF',
 } as const
 

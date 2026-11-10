@@ -87,15 +87,15 @@ export function Scene() {
         <FollowCamera />
         <FogPlanes />
         {!AB.has('rain') && <Rain half={tier === 'low'} />}
-        {!AB.has('bloom') && <EffectComposer multisampling={0}>
+        {!AB.has('bloom') && !isMobile && <EffectComposer multisampling={0}>
           <Bloom
             key={tier}
-            levels={tier === 'low' ? 4 : 8}
+            levels={tier === 'low' ? 4 : 6}
             intensity={bloom.intensity}
             luminanceThreshold={bloom.threshold}
-            luminanceSmoothing={0.3}
+            luminanceSmoothing={0.2}
             mipmapBlur
-            radius={0.6}
+            radius={0.38}
             resolutionScale={tier === 'low' ? 0.35 : 0.5}
           />
         </EffectComposer>}

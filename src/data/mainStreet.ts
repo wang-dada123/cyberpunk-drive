@@ -47,28 +47,40 @@ export const COLD = '#E8F4FF'
 export const WARM = '#FFE6C4'
 /** 天桥放在巷中段，薄桥面，追车机位不会贴着一块板。梁底约 6.5m。 */
 export const BRIDGE_Z = 55.2
-/** 斜穿高架在镜头前方交汇，不压在相机顶上。梁底约 8.4m。墩在路外。 */
-export const VIADUCT = { a: [-14, 126] as [number, number], b: [22, 147] as [number, number] }
+/**
+ * 斜穿高架：街左前方 → 右中景。墩心落在 C 段人行道（路缘 |x|=4 之外），
+ * 不压灭点，桥面在 z≈133 结束，尽端塔在 z≈157。
+ */
+export const VIADUCT = { a: [-5.45, 119.0] as [number, number], b: [5.45, 133.2] as [number, number] }
 export const CLOCK = { x: 6.15, z: 86.4 }
+export const TOWER_AT: [number, number, number] = [0, 0, 156.9]
+/** 路灯灯头位置。A 的三根贴楼面，肩宽仍让中线车道过车。 */
+export const STREET_LAMPS: Array<{ id: string; p: [number, number, number]; solid: boolean }> = [
+  { id: 'a-lamp-w1', p: [-6.35, 5.32, 36.4], solid: true },
+  { id: 'a-lamp-e1', p: [6.35, 5.32, 44.8], solid: true },
+  { id: 'a-lamp-w2', p: [-6.35, 5.32, 58.2], solid: true },
+  { id: 'b-lamp-e', p: [7.55, 5.15, 90.4], solid: false },
+]
 
 function b(p: Bld): Bld { return p }
 
 export const MAIN_BUILDINGS: Bld[] = [
-  // —— A 檐下巷。西：9 / 16 / 12 / 19。东：16 / 9 / 19 / 12。相邻高差 ≥4m ——
-  b({ id: 'a-w-noodle', seg: 'A', type: 'T4', side: -1, face: -FACE_A, z0: 33.4, z1: 41.2, depth: 8, h: 9, shop: { word: 'NOODLE', zh: '面', kind: 'noodle' } }),
+  // —— A 檐下巷。西：面馆 / 修理 / 茶，东：24H。高差 9/16/12/19 与 16/9/19/12 ——
+  // 追车朝 +Z 时，画面左侧是 +X。面馆/修理/茶放在 +X，24H 放在 -X。
+  b({ id: 'a-w-mart', seg: 'A', type: 'T4', side: -1, face: -FACE_A, z0: 33.4, z1: 41.2, depth: 8, h: 9, shop: { word: '24H', kind: 'mart' }, balcony: true }),
   b({ id: 'a-w-t1a', seg: 'A', type: 'T1', side: -1, face: -FACE_A, z0: 41.5, z1: 47.5, depth: 10, h: 16, balcony: true, laundry: true }),
-  b({ id: 'a-w-mart', seg: 'A', type: 'T1', side: -1, face: -FACE_A, z0: 47.8, z1: 53.8, depth: 10, h: 12, shop: { word: '24H', kind: 'mart' }, balcony: true }),
-  b({ id: 'a-w-t1b', seg: 'A', type: 'T1', side: -1, face: -FACE_A, z0: 54.1, z1: 60.1, depth: 10, h: 19, balcony: true, laundry: true, shutter: true }),
-  b({ id: 'a-e-t1', seg: 'A', type: 'T1', side: 1, face: FACE_A, z0: 33.4, z1: 39.4, depth: 10, h: 16, balcony: true, laundry: true }),
-  b({ id: 'a-e-repair', seg: 'A', type: 'T4', side: 1, face: FACE_A, z0: 39.7, z1: 47.7, depth: 8, h: 9, shop: { word: 'REPAIR', zh: '修', kind: 'repair' } }),
+  b({ id: 'a-w-t4', seg: 'A', type: 'T4', side: -1, face: -FACE_A, z0: 47.8, z1: 55.6, depth: 8, h: 12, balcony: true }),
+  b({ id: 'a-w-t1b', seg: 'A', type: 'T1', side: -1, face: -FACE_A, z0: 55.9, z1: 62.2, depth: 10, h: 19, balcony: true, laundry: true, shutter: true }),
+  b({ id: 'a-e-noodle', seg: 'A', type: 'T1', side: 1, face: FACE_A, z0: 33.4, z1: 39.4, depth: 10, h: 16, shop: { word: 'NOODLE', zh: '面', kind: 'noodle' }, balcony: true, laundry: true }),
+  b({ id: 'a-e-repair', seg: 'A', type: 'T4', side: 1, face: FACE_A, z0: 39.7, z1: 47.7, depth: 8, h: 9, shop: { word: 'REPAIR', zh: '修', kind: 'repair' }, balcony: true }),
   b({ id: 'a-e-t2', seg: 'A', type: 'T2', side: 1, face: FACE_A, z0: 48.0, z1: 56.4, depth: 11, h: 19 }),
-  b({ id: 'a-e-tea', seg: 'A', type: 'T4', side: 1, face: FACE_A, z0: 56.7, z1: 63.4, depth: 8, h: 12, shop: { word: 'TEA', zh: '茶', kind: 'tea' } }),
+  b({ id: 'a-e-tea', seg: 'A', type: 'T1', side: 1, face: FACE_A, z0: 56.7, z1: 63.4, depth: 10, h: 12, shop: { word: 'TEA', zh: '茶', kind: 'tea' }, balcony: true }),
 
-  // —— B 玻璃街，环岛南侧。西 24/9，东 18/9，塔与亭高差 ≥9 ——
-  b({ id: 'b-w-cafe', seg: 'B', type: 'T3', side: -1, face: -FACE_W, z0: 87.4, z1: 95.4, depth: 8, h: 24, glass: true, chamfer: true, shop: { word: 'CAFE', kind: 'cafe' } }),
-  b({ id: 'b-w-flora', seg: 'B', type: 'T4', side: -1, face: -FACE_W, z0: 97.2, z1: 105.0, depth: 8, h: 9, glass: true, shop: { word: 'FLORA', kind: 'flora' } }),
-  b({ id: 'b-e-books', seg: 'B', type: 'T3', side: 1, face: FACE_W, z0: 87.4, z1: 95.4, depth: 8, h: 18, glass: true, chamfer: true, shop: { word: 'BOOKS', kind: 'books' } }),
-  b({ id: 'b-e-shut', seg: 'B', type: 'T4', side: 1, face: FACE_W, z0: 97.2, z1: 105.0, depth: 8, h: 9, glass: true, shutter: true }),
+  // —— B 玻璃街。西转角 24m，东近处玻璃亭 8m（高差 16m），远处 16m 把天际线拉开 ——
+  b({ id: 'b-w-cafe', seg: 'B', type: 'T3', side: -1, face: -FACE_W, z0: 86.2, z1: 96.0, depth: 8, h: 24, glass: true, chamfer: true, shop: { word: 'CAFE', kind: 'cafe' } }),
+  b({ id: 'b-w-flora', seg: 'B', type: 'T4', side: -1, face: -FACE_W, z0: 97.6, z1: 105.2, depth: 8, h: 9, glass: true, shop: { word: 'FLORA', kind: 'flora' } }),
+  b({ id: 'b-e-books', seg: 'B', type: 'T4', side: 1, face: FACE_W, z0: 86.2, z1: 95.4, depth: 8, h: 8, glass: true, shop: { word: 'BOOKS', kind: 'books' } }),
+  b({ id: 'b-e-shut', seg: 'B', type: 'T4', side: 1, face: FACE_W, z0: 97.4, z1: 105.2, depth: 8, h: 16, glass: true, shutter: true }),
 
   // —— C 轨下市。西 10/22，东 14/26 ——
   b({ id: 'c-w-stall', seg: 'C', type: 'T4', side: -1, face: -FACE_N, z0: 116.5, z1: 124.2, depth: 5.2, h: 10, shop: { word: 'PARTS', kind: 'repair' } }),
@@ -76,8 +88,8 @@ export const MAIN_BUILDINGS: Bld[] = [
   b({ id: 'c-e-hall', seg: 'C', type: 'T4', side: 1, face: FACE_N, z0: 116.5, z1: 124.8, depth: 6, h: 14, shop: { word: 'CHIPS', kind: 'mart' } }),
   b({ id: 'c-e-t2', seg: 'C', type: 'T2', side: 1, face: FACE_N, z0: 126.4, z1: 133.6, depth: 11, h: 26 }),
 
-  // 尽端塔：直道消失点上，弯道西侧空地，10×10×38
-  b({ id: 't5', seg: 'C', type: 'T5', side: 0, face: 0, z0: 152.2, z1: 162.2, depth: 10, h: 38 }),
+  // 尽端塔：直道消失点上的细塔，3.4×3.4×38。弯道在 x=14，塔不压路。
+  b({ id: 't5', seg: 'C', type: 'T5', side: 0, face: 0, z0: TOWER_AT[2] - 2.1, z1: TOWER_AT[2] + 2.1, depth: 4.2, h: 38 }),
 ]
 
 export function bands(bd: Bld) {
@@ -105,9 +117,14 @@ export function solids(): Solid[] {
     out.push({ id: bd.id, c: [(x0 + x1) / 2, bd.h / 2, (z0 + z1) / 2], h: [(x1 - x0) / 2, bd.h / 2, (z1 - z0) / 2] })
   }
   out.push({ id: 'clock', c: [CLOCK.x, 4, CLOCK.z], h: [0.5, 4, 0.5] })
-  // 高架墩，远离车道
-  out.push({ id: 'pier-w', c: [VIADUCT.a[0], 4, VIADUCT.a[1]], h: [0.7, 4, 0.7] })
-  out.push({ id: 'pier-e', c: [VIADUCT.b[0], 4, VIADUCT.b[1]], h: [0.7, 4, 0.7] })
+  // 高架细墩，半宽 0.2，人行道上
+  out.push({ id: 'pier-w', c: [VIADUCT.a[0], 3.7, VIADUCT.a[1]], h: [0.2, 3.7, 0.2] })
+  out.push({ id: 'pier-e', c: [VIADUCT.b[0], 3.7, VIADUCT.b[1]], h: [0.2, 3.7, 0.2] })
+  for (const lamp of STREET_LAMPS) {
+    if (!lamp.solid) continue
+    const [x, , z] = lamp.p
+    out.push({ id: lamp.id, c: [x, 2.6, z], h: [0.08, 2.6, 0.08] })
+  }
   return out
 }
 
@@ -119,50 +136,72 @@ export type StreetSign = {
   size: number
   ice: boolean
   vertical: boolean
-  /** 距离隐藏用的锚点，默认 p */
+  /** 绕 X 转。地面字用 -π/2，让字躺平朝上 */
+  rx?: number
 }
 
-const ryStreet = (side: -1 | 1) => (side < 0 ? Math.PI / 2 : -Math.PI / 2)
+/** 灯箱中心的 x。朝 +Z 看时词首伸向 +X，东侧店要多往街心拉，否则楼体会吃掉开头。 */
+export function shopSignY(bd: Bld) {
+  if (bd.seg !== 'A') return 3.85
+  const z = (bd.z0 + bd.z1) / 2
+  return 2.85 + Math.max(0, z - 34) * 0.1
+}
+
+export function shopSignX(bd: Bld) {
+  const word = bd.shop?.word ?? ''
+  const pull = bd.side > 0 ? 1.7 + word.length * 0.36 : bd.seg === 'B' ? 1.35 : 1.05
+  return bd.face - bd.side * pull
+}
 
 export function streetSigns(): StreetSign[] {
   const out: StreetSign[] = []
-  const pushShop = (bd: Bld) => {
-    if (!bd.shop || bd.side === 0) return
+  const faceCam = Math.PI
+  for (const bd of MAIN_BUILDINGS) {
+    if (!bd.shop || bd.side === 0) continue
     const z = (bd.z0 + bd.z1) / 2
-    // B 的灯箱转成朝来车，追车直线上才读得到；A/C 横招贴在朝街的墙面上
-    const blade = bd.seg === 'B'
-    const ry = blade ? Math.PI : ryStreet(bd.side)
-    const x = bd.face - bd.side * (blade ? 1.15 : 0.5)
-    out.push({ text: bd.shop.word, font: 'en', p: [x, blade ? 4.15 : 4.55, blade ? z - 0.1 : z], ry, size: 0.4, ice: out.length % 3 === 2, vertical: false })
-    if (bd.shop.zh) out.push({ text: bd.shop.zh, font: 'zh', p: [x, 4.08, z + (bd.z1 - bd.z0) * 0.22], ry, size: 0.36, ice: false, vertical: false })
+    if (bd.seg === 'A' || bd.seg === 'B') {
+      const x = shopSignX(bd)
+      const y = shopSignY(bd)
+      const size = bd.seg === 'B' ? 0.46 : 0.4
+      out.push({ text: bd.shop.word, font: 'en', p: [x, y, z - 0.42], ry: faceCam, size, ice: false, vertical: false })
+      if (bd.shop.zh) out.push({ text: bd.shop.zh, font: 'zh', p: [x + bd.shop.word.length * 0.24, y, z - 0.42], ry: faceCam, size: 0.34, ice: true, vertical: false })
+    }
   }
-  for (const bd of MAIN_BUILDINGS) pushShop(bd)
-  // 天桥北面（车从北往南开，先看见这一面）
-  out.push({ text: 'EAVES LANE', font: 'en', p: [0.85, 7.15, BRIDGE_Z - 0.95], ry: Math.PI, size: 0.36, ice: false, vertical: false })
-  out.push({ text: '雨巷', font: 'zh', p: [-1.7, 7.15, BRIDGE_Z - 0.95], ry: Math.PI, size: 0.42, ice: true, vertical: false })
-  out.push({ text: '21:47', font: 'en', p: [CLOCK.x - 0.42, 7.45, CLOCK.z], ry: -Math.PI / 2, size: 0.34, ice: true, vertical: false })
-  out.push({ text: '21:47', font: 'en', p: [CLOCK.x, 7.45, CLOCK.z - 0.42], ry: Math.PI, size: 0.34, ice: true, vertical: false })
-  // C 段竖招，挂在斜穿高架下方，朝北（来车方向）
-  const words = ['RADIO', 'FIX', 'PARTS', 'CHIPS', 'RADIO', 'FIX', 'PARTS', 'CHIPS']
-  const hang: Array<[string, number, number, number]> = words.map((text, i) => {
-    const t = 0.18 + (i % 4) * 0.18 + (i > 3 ? 0.06 : 0)
-    const x = VIADUCT.a[0] + (VIADUCT.b[0] - VIADUCT.a[0]) * t
-    const z = VIADUCT.a[1] + (VIADUCT.b[1] - VIADUCT.a[1]) * t
-    return [text, x, 6.35 + (i % 3) * 0.12, z]
-  })
-  hang.forEach(([text, x, y, z], i) => {
-    out.push({ text, font: 'en', p: [x, y, z], ry: Math.PI, size: 0.38, ice: i % 2 === 0, vertical: true })
-  })
-  // 两侧墙面再挂一排竖招，追车看过去是成林，不只是桥下一条
-  const wallWords = ['PARTS', 'RADIO', 'CHIPS', 'FIX']
-  MAIN_BUILDINGS.filter((bd) => bd.seg === 'C' && bd.side !== 0).forEach((bd, i) => {
-    const side = bd.side === 1 ? 1 : -1
+  out.push({ text: 'EAVES LANE', font: 'en', p: [0.85, 7.15, BRIDGE_Z - 0.95], ry: faceCam, size: 0.36, ice: false, vertical: false })
+  out.push({ text: '雨巷', font: 'zh', p: [-1.7, 7.15, BRIDGE_Z - 0.95], ry: faceCam, size: 0.44, ice: true, vertical: false })
+  // 钟面用冷白，1.6 以内仍能越过 Bloom 阈值；冰蓝在这个封顶下过不了阈值
+  out.push({ text: '21:47', font: 'en', p: [CLOCK.x - 0.72, 7.55, CLOCK.z], ry: -Math.PI / 2, size: 0.3, ice: false, vertical: false })
+  out.push({ text: '21:47', font: 'en', p: [CLOCK.x, 7.55, CLOCK.z - 0.72], ry: faceCam, size: 0.3, ice: false, vertical: false })
+  // 地面投影字，躺平。追车从上方能读到 CAFE / FLORA
+  for (const id of ['b-w-cafe', 'b-w-flora']) {
+    const bd = MAIN_BUILDINGS.find((x) => x.id === id)!
+    const x = bd.face - bd.side * 2.05
     const z = (bd.z0 + bd.z1) / 2
-    const x = bd.face - side * 0.2
-    const ry = ryStreet(side)
-    out.push({ text: wallWords[i % 4], font: 'en', p: [x, 5.4, z - 0.6], ry, size: 0.34, ice: i % 2 === 0, vertical: true })
-    out.push({ text: wallWords[(i + 1) % 4], font: 'en', p: [x, 5.5, z + 1.1], ry, size: 0.32, ice: i % 2 === 1, vertical: true })
-  })
+    out.push({ text: bd.shop!.word, font: 'en', p: [x, 0.1, z], ry: 0, rx: Math.PI / 2, size: 0.62, ice: false, vertical: false })
+  }
+  // C 竖招成林，全部朝来车。FIX 最大。亮度由文字材质封在 1.6。
+  const hang: Array<[string, number, number, number, number]> = [
+    ['PARTS', -4.55, 6.5, 117.6, 0.4],
+    ['RADIO', -4.25, 8.05, 122.2, 0.38],
+    ['CHIPS', -4.7, 5.45, 126.4, 0.36],
+    ['FIX', 4.45, 7.15, 120.2, 0.62],
+    ['PARTS', 4.2, 5.35, 125.4, 0.4],
+    ['RADIO', 4.55, 6.7, 130.2, 0.36],
+    ['CHIPS', -3.9, 7.35, 131.6, 0.34],
+  ]
+  for (const [text, x, y, z, size] of hang) {
+    out.push({ text, font: 'en', p: [x, y, z], ry: faceCam, size, ice: false, vertical: true })
+  }
+  return out
+}
+
+/** 手机假辉光的锚点。每个光源一张，店内不挂片。 */
+export function glowAnchors(): { p: [number, number, number]; s: number }[] {
+  // 字本身已经是冷白自发光。光晕片如果罩住字，竖屏会把 NOODLE / 雨巷盖住，所以只挂在路灯和塔环上。
+  const out: { p: [number, number, number]; s: number }[] = []
+  for (const lamp of STREET_LAMPS) out.push({ p: lamp.p, s: 1.15 })
+  out.push({ p: [TOWER_AT[0], 16.4, TOWER_AT[2]], s: 2.2 })
+  out.push({ p: [TOWER_AT[0], 21.5, TOWER_AT[2]], s: 1.5 })
   return out
 }
 

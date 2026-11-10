@@ -3,7 +3,8 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { Text } from '@react-three/drei'
 import { CuboidCollider, RigidBody } from '@react-three/rapier'
 import * as THREE from 'three'
-import { mainStreetDrive, solids, streetSigns, type StreetSign } from '../data/mainStreet'
+import { glowAnchors, mainStreetDrive, solids, streetSigns, type StreetSign } from '../data/mainStreet'
+import { isMobile } from '../utils/isMobile'
 import { facadeEnvPMREM } from '../utils/look'
 import { getMainStreet, makeStreetMat, streetTime } from './mainStreetBuild'
 
@@ -11,8 +12,8 @@ const FONT_EN = `${import.meta.env.BASE_URL}fonts/orbitron-main.woff`
 const FONT_ZH = `${import.meta.env.BASE_URL}fonts/noto-sc-main.woff`
 const CHARS_EN = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789: '
 const CHARS_ZH = '面修茶雨巷'
-const WHITE = new THREE.Color('#E8F4FF').multiplyScalar(1.6)
-const ICE = new THREE.Color('#4FC3F7').multiplyScalar(1.4)
+const WHITE = new THREE.Color('#E8F4FF').multiplyScalar(1.55)
+const ICE = new THREE.Color('#4FC3F7').multiplyScalar(1.55)
 
 type RenderInfo = {
   glyphBounds: ArrayLike<number>
@@ -48,7 +49,7 @@ function bakeSigns(list: { sign: StreetSign; info: Troika }[]) {
     tex = tr.sdfTexture
     glyph = tr.sdfGlyphSize
     exp = tr.sdfExponent
-    m4.compose(new THREE.Vector3(sign.p[0], sign.p[1], sign.p[2]), q.setFromEuler(e.set(0, sign.ry, 0)), new THREE.Vector3(1, 1, 1))
+    m4.compose(new THREE.Vector3(sign.p[0], sign.p[1], sign.p[2]), q.setFromEuler(e.set(sign.rx ?? 0, sign.ry, 0)), new THREE.Vector3(1, 1, 1))
     const tint = sign.ice ? ICE : WHITE
     const bounds = tr.glyphBounds
     const ids = tr.glyphAtlasIndices
@@ -183,6 +184,46 @@ function SignBake({ signs }: { signs: StreetSign[] }) {
   )
 }
 
+function FakeGlow() {
+  const anchors = useMemo(() => glowAnchors(), [])
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const dummy = useMemo(() => new THREE.Object3D(), [])
+  const mat = useMemo(() => new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    toneMapped: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: { uCol: { value: new THREE.Color('#E8F4FF') } },
+    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `varying vec2 vUv; uniform vec3 uCol;
+      void main() {
+        float r = length(vUv - 0.5) * 2.0;
+        float a = smoothstep(0.5, 0.7, r) * (1.0 - smoothstep(0.9, 1.05, r));
+        if (a < 0.04) discard;
+        gl_FragColor = vec4(uCol, a * 0.35);
+      }`,
+  }), [])
+  useFrame(({ camera }) => {
+    const mesh = ref.current
+    if (!mesh) return
+    anchors.forEach((a, i) => {
+      dummy.position.set(a.p[0], a.p[1], a.p[2])
+      dummy.scale.setScalar(a.s)
+      dummy.lookAt(camera.position)
+      dummy.updateMatrix()
+      mesh.setMatrixAt(i, dummy.matrix)
+    })
+    mesh.instanceMatrix.needsUpdate = true
+  })
+  if (!isMobile) return null
+  return (
+    <instancedMesh ref={ref} args={[undefined, undefined, anchors.length]} frustumCulled={false} renderOrder={1}>
+      <planeGeometry args={[1, 1]} />
+      <primitive object={mat} attach="material" />
+    </instancedMesh>
+  )
+}
+
 export function MainStreet() {
   const gl = useThree((s) => s.gl)
   const built = useMemo(() => getMainStreet(), [])
@@ -209,6 +250,7 @@ export function MainStreet() {
       <mesh geometry={built.geo} material={mat} frustumCulled={false} />
       <mesh geometry={built.glass} material={glassMat} frustumCulled={false} renderOrder={1} />
       <SignBake signs={signs} />
+      <FakeGlow />
       <RigidBody type="fixed" colliders={false}>
         {boxes.map((b) => <CuboidCollider key={b.id} args={b.h} position={b.c} />)}
       </RigidBody>

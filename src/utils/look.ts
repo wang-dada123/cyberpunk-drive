@@ -10,7 +10,7 @@ export const LOOK = {
   car: {
     paint: '#2A3444', metalness: 0.8, roughness: 0.3, envMapIntensity: 1.2,
     waist: '#4FC3F7', waistK: 1.5, waistH: 0.03,
-    front: '#E8F4FF', frontK: 2.0,
+    front: '#E8F4FF', frontK: 1.25,
     tail: '#00B0FF', tailK: 1.5,
     beam: { color: '#CFE8FF', len: 8, r0: 0.25, r1: 1.8, a0: 0.18 },
     spot: { color: '#CFE8FF', near: 2, far: 8, width: 3, k: 0.35, gain: 0.2, pudGain: 1.0 }, // 中心亮度 k；gain=地面响应（漫反射路面），水洼处 pudGain
@@ -27,7 +27,7 @@ export const LOOK = {
     streakHz: 0.16, // 只剩轻微涟漪，不再用高频正弦当倒影
     phaseHz: 0.22,
     ice: '#4FC3F7', iceK: 0.05, // 只作为 #4FC3F7 亮度底，不另加色相
-    cap: 1.05, // 单通道上限。低于会改 Bloom 阈值的需要，亮条靠自发光而不是改 Bloom
+    cap: 0.96, // 路面反射停在 Bloom 阈值下，车灯光斑不把整条路晕白
     mip: 1.15, // 环境图 mip 偏移；上一版 3.5，倒影糊成一片
     lightK: 0.9, // 车灯 / 路灯镜面高光的额外倍率（主强度已在 k 里）
     lookLo: 0.5, // uLook = 0 时镜面强度比例
