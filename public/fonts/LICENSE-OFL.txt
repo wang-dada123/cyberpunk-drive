@@ -1,1 +1,5 @@
 Noto Sans CJK SC (subset) & Orbitron (subset): SIL Open Font License 1.1 — https://openfontlicense.org
+
+Main-street signs (orbitron-main.woff, noto-sc-main.woff):
+- Orbitron Medium subset (A–Z, 0–9, space, colon). Copyright 2018 The Orbitron Project Authors, Reserved Font Name "Orbitron". SIL OFL 1.1, full text in OFL-Orbitron.txt.
+- Noto Sans SC Regular subset (面 修 茶 雨 巷 only). Copyright 2014–2021 Adobe, Reserved Font Name "Source" (Source Han Sans, shipped by Google as Noto Sans SC). SIL OFL 1.1, same terms as OFL-Orbitron.txt. Free for commercial use; the font is not sold by itself.

@@ -11,6 +11,9 @@ import { Physics } from '@react-three/rapier'
 import { FogPlanes } from './FogPlanes'
 import { EffectComposer, Bloom } from '@react-three/postprocessing'
 import { colors, bloom, fogDensity } from '../theme/colors'
+import { EXPO } from '../utils/quality'
+import { AlleyRoad } from './AlleyRoad'
+import * as THREE from 'three'
 import { City } from './City'
 import { StaticBatch } from './StaticBatch'
 import { Car } from './Car'
@@ -46,7 +49,16 @@ function Lights() {
   return (
     <>
       <DistrictAtmosphere />
-      <directionalLight position={[0, 25, -60]} intensity={0.25} color="#9FC9FF" />
+      <directionalLight
+        position={[6, 28, 80]}
+        intensity={0.7}
+        color="#A8CFF2"
+        castShadow
+        shadow-bias={-0.0005}
+        shadow-normalBias={0.02}
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
+      />
       {REAL_LIGHTS && !AB.has('lights') && LAMPS.map(([x, y, z, c, i, d]) => <pointLight key={x + ',' + z} position={[x, y, z]} color={c} intensity={i} distance={d} />)}
     </>
   )
@@ -64,7 +76,13 @@ export function Scene() {
       frameloop={MANUAL ? 'never' : 'always'}
       camera={{ position: [0, 6, 12], fov: 50, near: 0.5, far: 180 }}
       gl={{ antialias: AB.has('bloom'), /* 场景走 EffectComposer（RT 无 MSAA），默认帧缓冲 MSAA 只浪费一次全屏 resolve */ powerPreference: 'high-performance' }}
-      onCreated={({ gl, camera, scene }) => { detectRenderer(gl); tierFromRenderer(rendererInfo.name); if (import.meta.env.DEV || DEBUG) Object.assign(window, { __gl: gl, __cam: camera, __scene: scene }) }}
+      onCreated={({ gl, camera, scene }) => {
+        detectRenderer(gl)
+        tierFromRenderer(rendererInfo.name)
+        gl.toneMapping = THREE.ACESFilmicToneMapping
+        gl.toneMappingExposure = EXPO
+        if (import.meta.env.DEV || DEBUG) Object.assign(window, { __gl: gl, __cam: camera, __scene: scene })
+      }}
       style={{ width: '100%', height: '100%', background: colors.bg }}
     >
       {/* 持续低帧时 DPR 只降一次到 1，不再回升 */}
@@ -82,20 +100,21 @@ export function Scene() {
       <Suspense fallback={null}>
         <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60} interpolate={false} updatePriority={-50}>
           <StaticBatch><City /></StaticBatch>
+          <AlleyRoad />
           <Car />
         </Physics>
         <FollowCamera />
         <FogPlanes />
         {!AB.has('rain') && <Rain half={tier === 'low'} />}
-        {!AB.has('bloom') && <EffectComposer multisampling={0}>
+        {!AB.has('bloom') && !isMobile && <EffectComposer multisampling={0}>
           <Bloom
             key={tier}
-            levels={tier === 'low' ? 4 : 8}
+            levels={tier === 'low' ? 4 : 6}
             intensity={bloom.intensity}
             luminanceThreshold={bloom.threshold}
-            luminanceSmoothing={0.3}
+            luminanceSmoothing={0.2}
             mipmapBlur
-            radius={0.6}
+            radius={0.38}
             resolutionScale={tier === 'low' ? 0.35 : 0.5}
           />
         </EffectComposer>}

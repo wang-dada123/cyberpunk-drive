@@ -59,6 +59,9 @@ export function CarModel() {
     r.getWorldPosition(_p); _f.set(0, 0, -1).transformDirection(r.matrixWorld)
     const n = Math.hypot(_f.x, _f.z) || 1
     carSpotUniform.value.set(_p.x, _p.z, _f.x / n, _f.z / n)
+    const inAlley = _p.z > 20 && _p.z < 70 && Math.abs(_p.x) < 18
+    beamMat.uniforms.uA.value = inAlley ? 0 : L.beam.a0
+    underMat.uniforms.uA.value = inAlley ? 0.06 : L.under.a
   })
   const h = L.waistH
   // 灯条坐标为 Car 本地（车头 -Z），模型底贴碰撞体底 y=-0.2

@@ -87,7 +87,8 @@ const CAR_SPOT_GLSL = `uniform vec4 uCar;
 float carSpot(vec2 w){ vec2 d = w - uCar.xy; float a = dot(d, uCar.zw); float b = dot(d, vec2(-uCar.w, uCar.z));
   float r2 = pow((a - ${((SP.near+SP.far)/2).toFixed(2)}) / ${((SP.far-SP.near)/2).toFixed(2)}, 2.0) + pow(b / ${(SP.width/2).toFixed(2)}, 2.0);
   float s = 1.0 - smoothstep(0.0, 1.0, r2); return ${SP.k.toFixed(3)} * s * s; }`
-const SPOT_EMIT = `totalEmissiveRadiance += ${g3(SP.color)} * carSpot(vWp.xz) * (${SP.gain.toFixed(3)} + ${(SP.pudGain-SP.gain).toFixed(3)} * gPudL);`
+const SPOT_EMIT = `float alleyA = step(20.0, vWp.z) * step(vWp.z, 70.0) * step(abs(vWp.x), 18.0);
+totalEmissiveRadiance += ${g3(SP.color)} * carSpot(vWp.xz) * (${SP.gain.toFixed(3)} + ${(SP.pudGain-SP.gain).toFixed(3)} * gPudL) * mix(1.0, 0.03, alleyA);`
 const LAMP_EMIT = REAL_LIGHTS ? '' : 'totalEmissiveRadiance += diffuseColor.rgb * RECIPROCAL_PI * gLamp; // 假光斑。水洼已把 gLamp 乘掉，避免彩蛋区薄荷绿串进倒影'
 export const LAMPS_XZ: [number, number][] = [[0, 14], [0, -50], [60, 0], [-60, 0], [0, 112], [0, 140]] // 与 Scene.tsx 的 pointLight 一致
 
@@ -160,7 +161,8 @@ float lampStreak(vec2 rt, vec2 vh){
   gLamp *= 1.0 - gPud;
 }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-roughnessFactor = mix(0.6 + 0.2 * gD.b, mix(${PD.roughEdge.toFixed(3)}, ${PD.rough.toFixed(3)}, gPud), gPudR);`)
+roughnessFactor = mix(0.6 + 0.2 * gD.b, mix(${PD.roughEdge.toFixed(3)}, ${PD.rough.toFixed(3)}, gPud), gPudR);
+roughnessFactor = mix(roughnessFactor, 0.82, step(20.0, vWp.z) * step(vWp.z, 70.0) * step(abs(vWp.x), 18.0) * gPud);`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
 metalnessFactor = mix(0.25, ${PD.metal.toFixed(3)}, gPud);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
@@ -187,7 +189,8 @@ if (gPud > 0.001) {
   float ripple = 1.0 - ${PD.streakK.toFixed(3)} + ${PD.streakK.toFixed(3)} * sin(dot(vWp.xz, vh) * ${PD.streakHz.toFixed(3)} + dot(vWp.xz, rt) * ${PD.phaseHz.toFixed(3)});
   vec2 headXZ = uCar.xy + uCar.zw * 1.05;
   vec2 tailXZ = uCar.xy - uCar.zw * 1.05;
-  float hs = streak(mirrorHit(headXZ, 0.95), rt, vh, 4.6, 0.4);
+  float alleyA = step(20.0, vWp.z) * step(vWp.z, 70.0) * step(abs(vWp.x), 18.0);
+  float hs = streak(mirrorHit(headXZ, 0.95), rt, vh, 4.6, 0.4) * mix(1.0, 0.18, alleyA);
   float ts = streak(mirrorHit(tailXZ, 1.02), rt, vh, 3.8, 0.48);
   vec3 refl = ice * ${PD.iceK.toFixed(3)};
   refl += mix(ice, wht, clamp(max(envL, gLit), 0.0, 1.0)) * envL * ${PD.envK.toFixed(3)};
@@ -196,12 +199,12 @@ if (gPud > 0.001) {
   refl = satCap(refl, 0.5);
   refl.g = min(refl.g, max(refl.r, refl.b));
   float lookK = mix(${PD.lookLo.toFixed(3)}, 1.0, clamp(uLook, 0.0, 1.0));
-  totalEmissiveRadiance += min(refl, vec3(${PD.cap.toFixed(3)})) * lookK;
+  totalEmissiveRadiance += min(refl, vec3(${PD.cap.toFixed(3)})) * lookK * mix(1.0, 0.28, alleyA);
 }
 ${SPOT_EMIT}
 ${LAMP_EMIT}`)
   }
-  m.customProgramCacheKey = () => 'asphaltPuddleV2'
+  m.customProgramCacheKey = () => 'asphaltPuddleV3'
   return m
 }
 

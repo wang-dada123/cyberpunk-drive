@@ -86,6 +86,11 @@ const result = await page.evaluate(async ([FILTER, MODES, SETTLE]) => {
     }
     paths.push({ name: 'S1-S2-chain', pts: [...sp.slice(0, bi + 1), ...blend, ...s2], capN: 7, capM: 9, steer: 3.4, look: 3 })
   }
+  if (window.__mainStreet?.pts?.length) {
+    const pts = window.__mainStreet.pts
+    paths.push({ name: 'main-street-out', pts, capN: 13, capM: 21 })
+    paths.push({ name: 'main-street-back', pts: [...pts].reverse(), capN: 13, capM: 21 })
+  }
   if (window.__bridge) {
     const B = window.__bridge
     const L = B.FLAT / 2 + B.RAMP + 10
