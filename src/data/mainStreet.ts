@@ -67,14 +67,14 @@ function b(p: Bld): Bld { return p }
 export const MAIN_BUILDINGS: Bld[] = [
   // —— A 檐下巷。西：面馆 / 修理 / 茶，东：24H。高差 9/16/12/19 与 16/9/19/12 ——
   // 追车朝 +Z 时，画面左侧是 +X。面馆/修理/茶放在 +X，24H 放在 -X。
-  b({ id: 'a-w-mart', seg: 'A', type: 'T4', side: -1, face: -FACE_A, z0: 33.4, z1: 41.2, depth: 8, h: 9, shop: { word: '24H', kind: 'mart' }, balcony: true }),
-  b({ id: 'a-w-t1a', seg: 'A', type: 'T1', side: -1, face: -FACE_A, z0: 41.5, z1: 47.5, depth: 10, h: 16, balcony: true, laundry: true }),
-  b({ id: 'a-w-t4', seg: 'A', type: 'T4', side: -1, face: -FACE_A, z0: 47.8, z1: 55.6, depth: 8, h: 12, balcony: true }),
-  b({ id: 'a-w-t1b', seg: 'A', type: 'T1', side: -1, face: -FACE_A, z0: 55.9, z1: 62.2, depth: 10, h: 19, balcony: true, laundry: true, shutter: true }),
-  b({ id: 'a-e-noodle', seg: 'A', type: 'T1', side: 1, face: FACE_A, z0: 33.4, z1: 39.4, depth: 10, h: 16, shop: { word: 'NOODLE', zh: '面', kind: 'noodle' }, balcony: true, laundry: true }),
-  b({ id: 'a-e-repair', seg: 'A', type: 'T4', side: 1, face: FACE_A, z0: 39.7, z1: 47.7, depth: 8, h: 9, shop: { word: 'REPAIR', zh: '修', kind: 'repair' }, balcony: true }),
-  b({ id: 'a-e-t2', seg: 'A', type: 'T2', side: 1, face: FACE_A, z0: 48.0, z1: 56.4, depth: 11, h: 19 }),
-  b({ id: 'a-e-tea', seg: 'A', type: 'T1', side: 1, face: FACE_A, z0: 56.7, z1: 63.4, depth: 10, h: 12, shop: { word: 'TEA', zh: '茶', kind: 'tea' }, balcony: true }),
+  b({ id: 'a-w-mart', seg: 'A', type: 'T4', side: -1, face: -FACE_A, z0: 37.4, z1: 45.2, depth: 8, h: 9, shop: { word: '24H', kind: 'mart' }, balcony: true }),
+  b({ id: 'a-w-t1a', seg: 'A', type: 'T1', side: -1, face: -FACE_A, z0: 45.5, z1: 51.5, depth: 10, h: 16, balcony: true, laundry: true }),
+  b({ id: 'a-w-t4', seg: 'A', type: 'T4', side: -1, face: -FACE_A, z0: 51.8, z1: 59.6, depth: 8, h: 12, balcony: true }),
+  b({ id: 'a-w-t1b', seg: 'A', type: 'T1', side: -1, face: -FACE_A, z0: 59.9, z1: 66.2, depth: 10, h: 19, balcony: true, laundry: true, shutter: true }),
+  b({ id: 'a-e-noodle', seg: 'A', type: 'T1', side: 1, face: FACE_A, z0: 37.4, z1: 43.4, depth: 10, h: 16, shop: { word: 'NOODLE', zh: '面', kind: 'noodle' }, balcony: true, laundry: true }),
+  b({ id: 'a-e-repair', seg: 'A', type: 'T4', side: 1, face: FACE_A, z0: 43.7, z1: 51.7, depth: 8, h: 9, shop: { word: 'REPAIR', zh: '修', kind: 'repair' }, balcony: true }),
+  b({ id: 'a-e-t2', seg: 'A', type: 'T2', side: 1, face: FACE_A, z0: 52.0, z1: 60.4, depth: 11, h: 19 }),
+  b({ id: 'a-e-tea', seg: 'A', type: 'T1', side: 1, face: FACE_A, z0: 60.7, z1: 66.2, depth: 8, h: 12, shop: { word: 'TEA', zh: '茶', kind: 'tea' }, balcony: true }),
 
   // —— B 玻璃街。西转角 24m，东近处玻璃亭 8m（高差 16m），远处 16m 把天际线拉开 ——
   b({ id: 'b-w-cafe', seg: 'B', type: 'T3', side: -1, face: -FACE_W, z0: 86.2, z1: 96.0, depth: 8, h: 24, glass: true, chamfer: true, shop: { word: 'CAFE', kind: 'cafe' } }),
@@ -160,24 +160,16 @@ export function streetSigns(): StreetSign[] {
     if (!bd.shop || bd.side === 0) continue
     const z = (bd.z0 + bd.z1) / 2
     if (bd.seg === 'A') {
-      // 字沿店面展开，略转向来车。宽方向顺着街，不横插进楼体。
-      const pull = 1.15 + bd.shop.word.length * 0.2
-      const x = bd.face - bd.side * pull
-      const y = 3.05
-      out.push({ text: bd.shop.word, font: 'en', p: [x, y, z - 0.22], ry: faceCam, size: 0.42, ice: false, vertical: false })
-      if (bd.shop.zh) out.push({ text: bd.shop.zh, font: 'zh', p: [x - bd.side * (0.55 + bd.shop.word.length * 0.22), y, z - 0.22], ry: faceCam, size: 0.34, ice: true, vertical: false })
+      const ry = bd.side > 0 ? -Math.PI / 2 : Math.PI / 2
+      const x = bd.face - bd.side * 0.58
+      const y = 3.58
+      out.push({ text: bd.shop.word, font: 'en', p: [x, y, z], ry, size: 0.34, ice: false, vertical: false })
+      if (bd.shop.zh) out.push({ text: bd.shop.zh, font: 'zh', p: [x, y, z + 1.2], ry, size: 0.3, ice: true, vertical: false })
     } else if (bd.seg === 'B') {
       const x = shopSignX(bd)
       const y = shopSignY(bd)
       out.push({ text: bd.shop.word, font: 'en', p: [x, y, z - 0.42], ry: faceCam, size: 0.46, ice: false, vertical: false })
     }
-  }
-  const blades: Array<[string, number, number, number]> = [
-    ['REPAIR', 5.05, 7.4, 50.2],
-    ['TEA', -5.05, 7.15, 50.6],
-  ]
-  for (const [text, x, y, z] of blades) {
-    out.push({ text, font: 'en', p: [x, y, z], ry: faceCam, size: 0.32, ice: text === '24H', vertical: true })
   }
   out.push({ text: 'EAVES LANE', font: 'en', p: [0.85, 7.15, BRIDGE_Z - 0.95], ry: faceCam, size: 0.36, ice: false, vertical: false })
   out.push({ text: '雨巷', font: 'zh', p: [-1.7, 7.15, BRIDGE_Z - 0.95], ry: faceCam, size: 0.44, ice: true, vertical: false })

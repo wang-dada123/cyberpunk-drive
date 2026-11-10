@@ -276,11 +276,16 @@ export function FollowCamera() {
     if (Math.abs(cam.fov - fov) > 0.01) { cam.fov = fov; cam.updateProjectionMatrix() }
     if (SHOT_A) {
       const c = SHOT_A_CAM
-      const narrow = window.innerWidth < 500
-      cam.position.set(c.pos[0], narrow ? 1.7 : c.pos[1], narrow ? 16.5 : c.pos[2])
+      const z = c.carZ
+      cam.position.set(0, c.height, z - c.back)
+      const lookZ = z + c.lookAhead
+      const dist = c.back + c.lookAhead
+      // -4° 会把视心压进路面。这里用约 -1°，车仍在下中，楼檐贴上沿。
+      const lookY = 1.35
       cam.up.set(0, 1, 0)
-      cam.lookAt(c.look[0], narrow ? 3.6 : c.look[1], narrow ? 48 : c.look[2])
-      const fov = narrow ? 54 : c.fov
+      cam.lookAt(0, lookY, lookZ)
+      const narrow = window.innerWidth < 500
+      const fov = narrow ? 68 : c.fov
       if (Math.abs(cam.fov - fov) > 0.01) { cam.fov = fov; cam.updateProjectionMatrix() }
     }
   })

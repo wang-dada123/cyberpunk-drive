@@ -243,31 +243,34 @@ float gRough, gMetal, gEnvK; vec3 gEmit;`)
     base *= vary;
     if (vS0 > 1.5 && vS0 < 2.5) base *= 0.62;
     if (vS0 > 2.5) base *= 0.5;
+    if (vS0 < 0.5 && vRoof < 0.5) {
+      if (y < 5.2) { base = ${lin('#262C34')}; gRough = 0.88; gMetal = 0.0; }
+      else if (y < vH - 2.4) { base = ${lin('#323A45')}; gRough = 0.60; gMetal = 0.25; }
+      else { base = ${lin('#1D232B')}; gRough = 0.80; gMetal = 0.0; }
+      gEmit = vec3(0.0);
+    }
     gRough = mix(mix(0.92, 0.38, wet), 1.0, wC) * wC + mix(0.38, 0.9, seam) * wM + mix(0.08, 0.72, mull) * wG;
     gMetal = 0.04 * wC + 0.86 * wM + mix(0.08, 0.4, mull) * wG;
     gEnvK = 0.2 * wC + mix(0.7, 0.12, seam) * wM + mix(mix(0.45, 0.22, curtain), 0.12, mull) * wG;
     // 住宅窗格（A）和幕墙大格（B）。亮度停在 Bloom 阈值下，墙本身不进光晕。
-    if (vRoof < 0.5 && y > 4.3 && vS0 < 0.5) {
-      float floorH = 3.2;
-      float yRel = y - 4.3;
+    if (vRoof < 0.5 && y > 4.6 && vS0 < 0.5) {
+      float floorH = 3.15;
+      float yRel = y - 4.6;
       float fl = floor(yRel / floorH);
       float ly = yRel - fl * floorH;
-      float period = 4.1;
-      float xw = vF.x;
-      float cell = floor(xw / period);
-      float lx = xw - cell * period;
-      float inGroup = step(lx, 2.35);
-      float col = floor(lx / 0.82);
-      float lxx = lx - col * 0.82;
-      float win = step(0.14, lxx) * step(lxx, 0.68);
-      float inY = step(0.62, ly) * step(ly, 2.45);
-      float keep = step(0.22, bh(vec2(cell, fl + vSeed)));
-      float pane = inGroup * win * inY * keep * step(0.0, yRel);
-      float warmW = step(0.88, bh(vec2(cell + 5.0, fl + vSeed)));
-      vec3 wc = mix(${lin('#E8F4FF')}, ${lin('#FFE6C4')}, warmW);
-      float on = step(0.42, bh(vec2(cell + 1.7, fl)));
-      gEmit = wc * pane * on * mix(0.42, 0.62, warmW);
-      base = mix(base, vec3(0.012, 0.018, 0.028), pane);
+      float period = 3.6;
+      float cell = floor(vF.x / period);
+      float lx = vF.x - cell * period;
+      float inY = step(0.7, ly) * step(ly, 2.35);
+      float inX = step(0.35, lx) * step(lx, 1.55);
+      float hole = inX * inY * step(0.0, yRel);
+      float hsh = bh(vec2(cell, fl + vSeed));
+      float warmW = hole * step(0.85, hsh);
+      float coldW = hole * step(hsh, 0.15);
+      vec3 glass = ${lin('#0C1218')};
+      base = mix(base, glass, hole);
+      gRough = mix(gRough, 0.12, hole);
+      gEmit += ${lin('#FFE6C4')} * warmW * 0.8 + ${lin('#CFE6FF')} * coldW * 0.6;
     }
     if (vRoof < 0.5 && y > 3.6 && vS0 > 0.5 && vS0 < 1.5) {
       float glassF = step(0.5, vS0);
@@ -346,8 +349,10 @@ float gRough, gMetal, gEnvK; vec3 gEmit;`)
     base = warm * 0.02; gEmit = warm * 0.5; gRough = 1.0; gMetal = 0.0; gEnvK = 0.0;
   } else if (vZone < 10.5) {
     base = ${lin('#071018')}; gEmit = ${lin('#4FC3F7')} * 2.4; gRough = 0.3; gMetal = 0.1; gEnvK = 0.2;
-  } else {
+  } else if (vZone < 11.5) {
     base = ${lin('#071018')}; gEmit = ${lin('#4FC3F7')} * 0.85; gRough = 0.35; gMetal = 0.05; gEnvK = 0.2;
+  } else {
+    base = ${lin('#14110E')}; gEmit = ${lin('#FFE6C4')} * 0.75; gRough = 0.9; gMetal = 0.0; gEnvK = 0.05;
   }
   diffuseColor.rgb = base;
 }`)
@@ -356,7 +361,7 @@ float gRough, gMetal, gEnvK; vec3 gEmit;`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance = gEmit;')
       .replace('#include <lights_fragment_maps>', '#include <lights_fragment_maps>\nradiance *= gEnvK;')
   }
-  m.customProgramCacheKey = () => 'mainStreetV7'
+  m.customProgramCacheKey = () => 'mainStreetV8'
   return m
 }
 
@@ -424,43 +429,32 @@ function dressAlley(buf: Buf, bd: Bld) {
   const mz = (bd.z0 + bd.z1) / 2
   cylY(buf, face - side * 0.1, bd.h * 0.42, bd.z0 + 0.28, 0.05, bd.h * 0.78, 6, 1, seed)
   cylY(buf, face - side * 0.1, bd.h * 0.38, bd.z1 - 0.28, 0.04, bd.h * 0.6, 6, 1, seed + 1)
-  {
-    const zL = bd.z0 + 0.2, zR = bd.z1 - 0.2
-    const xWall = face - side * 0.02
-    const xLip = face - side * 1.2
-    const at: Attr = { ...A0(), zone: 1, seed }
-    buf.quad([xWall, 3.28, zL], [xWall, 3.28, zR], [xLip, 2.68, zR], [xLip, 2.68, zL], [[0, 0], [1, 0], [1, 1], [0, 1]], at)
-  }
+  const row = MAIN_BUILDINGS.filter((o) => o.seg === 'A' && o.side === bd.side).sort((a, c) => a.z0 - c.z0)
+  const style = Math.max(0, row.findIndex((o) => o.id === bd.id)) % 3
   let n = 0
-  for (let y = 6.35; y < bd.h - 1.1; y += 3.1) {
-    const w = Math.min(bd.z1 - bd.z0 - 0.7, 4.6)
-    const px = face - side * 0.72
-    prop(buf, px, y, mz, 1.2, 0.09, w, 0, 8, seed + n)
-    const railX = px - side * 0.48
-    const posts = Math.max(6, Math.round(w / 0.28))
-    for (let p = 0; p < posts; p++) {
-      const oz = -w * 0.42 + (p / (posts - 1)) * w * 0.84
-      cylY(buf, railX, y + 0.36, mz + oz, 0.018, 0.62, 5, 1, seed + n * 17 + p)
+  for (let y = 6.4; y < bd.h - 1.2; y += 3.15) {
+    const w = Math.min(bd.z1 - bd.z0 - 0.8, 4.4)
+    const px = face - side * 0.45
+    prop(buf, px, y, mz, 0.9, 0.15, w, 0, 8, seed + n)
+    const railX = px - side * 0.38
+    if (style === 0) {
+      for (let p = 0; p < 5; p++) cylY(buf, railX, y + 0.42, mz - w * 0.4 + p * w * 0.2, 0.02, 0.55, 5, 1, seed + p)
+      beam(buf, [railX, y + 0.68, mz - w * 0.42], [railX, y + 0.68, mz + w * 0.42], 0.03, 1, seed)
+      pot(buf, px - side * 0.05, mz - w * 0.22, seed + n, y + 0.1)
+      pot(buf, px - side * 0.05, mz + w * 0.22, seed + n + 2, y + 0.1)
+    } else if (style === 1) {
+      for (let p = 0; p < 7; p++) cylY(buf, railX, y + 0.45, mz - w * 0.42 + p * (w * 0.84 / 6), 0.018, 0.7, 5, 1, seed + p)
+      beam(buf, [railX, y + 0.78, mz - w * 0.42], [railX, y + 0.78, mz + w * 0.42], 0.028, 1, seed)
+      const xh = px - side * 0.05
+      beam(buf, [xh, y + 0.55, mz - 0.9], [xh, y + 0.55, mz + 0.9], 0.02, 1, seed)
+      const cloth: Attr = { ...A0(), zone: 5, seed: seed + n, cx: xh, cy: y, cz: mz }
+      buf.quad([xh, y + 0.5, mz - 0.7], [xh, y + 0.5, mz], [xh, y - 0.55, mz], [xh, y - 0.55, mz - 0.7], [[0, 0], [1, 0], [1, 1], [0, 1]], cloth)
+      buf.quad([xh, y + 0.5, mz + 0.15], [xh, y + 0.5, mz + 0.85], [xh, y - 0.15, mz + 0.85], [xh, y - 0.15, mz + 0.15], [[0, 0], [1, 0], [1, 1], [0, 1]], { ...cloth, seed: seed + 3 })
+    } else {
+      beam(buf, [railX, y + 0.55, mz - w * 0.4], [railX, y + 0.55, mz + w * 0.4], 0.035, 1, seed)
+      prop(buf, px + side * 0.15, y - 0.28, mz + w * 0.18, 0.36, 0.28, 0.42, 0, 1, seed)
+      cylY(buf, px - side * 0.02, y - 0.28, mz + w * 0.18, 0.1, 0.04, 6, 1, seed)
     }
-    beam(buf, [railX, y + 0.68, mz - w * 0.42], [railX, y + 0.68, mz + w * 0.42], 0.03, 1, seed)
-    beam(buf, [railX, y + 0.32, mz - w * 0.42], [railX, y + 0.32, mz + w * 0.42], 0.025, 1, seed)
-    // 窗框：成组的几何凹凸，不是贴图点子
-    for (const oz of [-1.15, 0, 1.15]) {
-      const wz = mz + oz
-      const wx = face - side * 0.06
-      prop(buf, wx, y + 1.15, wz - 0.38, 0.06, 1.35, 0.05, 0, 1, seed)
-      prop(buf, wx, y + 1.15, wz + 0.38, 0.06, 1.35, 0.05, 0, 1, seed)
-      prop(buf, wx, y + 1.8, wz, 0.06, 0.05, 0.8, 0, 1, seed)
-      prop(buf, wx, y + 0.5, wz, 0.06, 0.05, 0.8, 0, 1, seed)
-    }
-    const xh = px - side * 0.12
-    beam(buf, [xh, y + 0.5, mz - 1.05], [xh, y + 0.5, mz + 1.05], 0.025, 1, seed + 2)
-    const cloth: Attr = { ...A0(), zone: 5, seed: seed + n, cx: xh, cy: y, cz: mz }
-    buf.quad([xh, y + 0.45, mz - 0.85], [xh, y + 0.45, mz - 0.05], [xh, y - 0.45, mz - 0.05], [xh, y - 0.45, mz - 0.85], [[0, 0], [1, 0], [1, 1], [0, 1]], cloth)
-    buf.quad([xh, y + 0.45, mz + 0.2], [xh, y + 0.45, mz + 0.95], [xh, y - 0.1, mz + 0.95], [xh, y - 0.1, mz + 0.2], [[0, 0], [1, 0], [1, 1], [0, 1]], { ...cloth, seed: seed + 4 })
-    prop(buf, px + side * 0.2, y - 0.42, mz + w * 0.2, 0.42, 0.32, 0.5, 0, 1, seed + n)
-    cylY(buf, px - side * 0.02, y - 0.42, mz + w * 0.2, 0.11, 0.05, 7, 1, seed + 6)
-    if (n % 2 === 0) pot(buf, px - side * 0.08, mz - w * 0.3, seed + n, y + 0.08)
     n++
   }
   if (bd.shop) {
@@ -542,13 +536,16 @@ function shelfRow(buf: Buf, x: number, z: number, w: number, seed: number, y0 = 
 }
 
 /** 内凹铺面：框、玻璃、暖墙、各店自己的家具。玻璃进单独的透明网格。 */
-function addShop(buf: Buf, glass: Buf, bd: Bld, trims: Trim[]) {
+function addShop(buf: Buf, glass: Buf, bd: Bld, trims: Trim[], glassA: Buf) {
   if (bd.side === 0) return
   const seed = hash(bd.id)
   const into = (d: number) => bd.face + bd.side * d
   const zL = bd.z0 + 0.4, zR = bd.z1 - 0.4, zm = (zL + zR) / 2, zw = zR - zL
   const xFront = into(-0.05)
-  prop(buf, into(1.85), 1.4, zm, 0.08, 2.55, zw, 0, 7, seed)
+  const backD = bd.seg === 'A' ? 2.7 : 1.85
+  const backZ = bd.seg === 'A' ? 12 : 7
+  prop(buf, into(backD), 1.4, zm, 0.08, 2.55, zw, 0, backZ, seed)
+  if (bd.seg === 'A') prop(buf, into(0.35), 2.55, zm, 0.04, 0.06, zw * 0.8, 0, 7, seed)
   prop(buf, into(0.95), 0.04, zm, 1.8, 0.05, zw, 0, 1, seed)
   prop(buf, into(0.95), 1.35, zL, 1.8, 2.5, 0.08, 0, 1, seed)
   prop(buf, into(0.95), 1.35, zR, 1.8, 2.5, 0.08, 0, 1, seed)
@@ -561,7 +558,8 @@ function addShop(buf: Buf, glass: Buf, bd: Bld, trims: Trim[]) {
     for (let i = 0; i < 5; i++) prop(buf, xm, 1.7 + i * 0.2, zm, 0.04, 0.08, zw * 0.86, 0, 1, seed + i)
   }
   const gAt = A0()
-  glass.quad(
+  const gDest = bd.seg === 'A' ? glassA : glass
+  gDest.quad(
     [xFront, 0.22, zL], [xFront, 0.22, zR], [xFront, 2.72, zR], [xFront, 2.72, zL],
     [[0, 0], [1, 0], [1, 1], [0, 1]], gAt,
   )
@@ -583,8 +581,9 @@ function addShop(buf: Buf, glass: Buf, bd: Bld, trims: Trim[]) {
     cylY(buf, into(0.5), 1.55, zm - 0.4, 0.16, 0.12, 6, 1, seed)
     cylY(buf, into(0.5), 1.55, zm + 0.35, 0.14, 0.1, 6, 1, seed)
     for (let i = 0; i < 4; i++) prop(buf, into(1.55), 1.7, zm - 1.1 + i * 0.55, 0.04, 0.55, 0.04, 0.4, 1, seed + i)
-    stool(buf, sidewalk(bd, 0.42), zm - 0.85, seed)
-    stool(buf, sidewalk(bd, 0.42), zm + 0.7, seed + 3)
+    stool(buf, sidewalk(bd, 0.42), zm - 0.95, seed)
+    stool(buf, sidewalk(bd, 0.42), zm, seed + 1)
+    stool(buf, sidewalk(bd, 0.42), zm + 0.9, seed + 3)
   } else if (kind === 'repair' && bd.seg !== 'C') {
     shelfRow(buf, xi, zm, zw * 0.75, seed, 0.7, 4)
     for (let i = 0; i < 4; i++) prop(buf, xi - bd.side * 0.12, 0.85 + i * 0.4, zm - 0.8 + i * 0.15, 0.04, 0.22, 0.04, 0.3, 1, seed + i)
@@ -639,10 +638,14 @@ function addShop(buf: Buf, glass: Buf, bd: Bld, trims: Trim[]) {
     prop(buf, xi, 1.1, zm, 0.3, 1.6, zw * 0.5, 0, 1, seed)
   }
   if (bd.shop && bd.seg === 'A') {
-    const boardW = bd.shop.word.length * 0.4 + (bd.shop.zh ? 0.9 : 0.45)
-    const x = bd.face - bd.side * (1.15 + bd.shop.word.length * 0.2)
-    prop(buf, x, 3.05, zm, boardW, 0.7, 0.12, 0, 1, seed)
-    prop(buf, x, 3.05, zm - 0.08, boardW * 0.92, 0.5, 0.03, 0, 11, seed)
+    const boardW = Math.min(zw * 0.92, bd.shop.word.length * 0.42 + (bd.shop.zh ? 1.4 : 0.5))
+    const x = bd.face - bd.side * 0.42
+    const y = 3.58
+    prop(buf, x, y, zm, 0.18, 0.62, boardW, 0, 8, seed)
+    prop(buf, x - bd.side * 0.08, y, zm, 0.04, 0.46, boardW * 0.9, 0, 11, seed)
+    for (const oz of [-0.55, 0.55]) {
+      beam(buf, [bd.face - bd.side * 0.02, y, zm + oz], [x, y, zm + oz], 0.05, 1, seed + oz)
+    }
     spill(buf, bd.face - bd.side * 1.05, zm, seed + 11, 1.15)
   } else if (bd.shop && bd.seg === 'B') {
     const boardW = Math.min(zw * 0.96, bd.shop.word.length * 0.34 + (bd.shop.zh ? 1.5 : 0.7))
@@ -662,6 +665,7 @@ function addShop(buf: Buf, glass: Buf, bd: Bld, trims: Trim[]) {
 export function buildMainStreet() {
   const buf = new Buf()
   const glass = new Buf()
+  const glassA = new Buf()
   const trims: Trim[] = []
   for (const bd of MAIN_BUILDINGS) {
     const seed = hash(bd.id)
@@ -702,7 +706,7 @@ export function buildMainStreet() {
     } else if (bd.type === 'T2') {
       prop(buf, mx, bd.h + 0.7, mz, 1.8, 1.3, 1.4, 0, 1, seed)
     }
-    if (bd.balcony && bd.side !== 0) {
+    if (bd.balcony && bd.side !== 0 && bd.seg !== 'A') {
       const row = MAIN_BUILDINGS.filter((o) => o.seg === bd.seg && o.side === bd.side && o.balcony)
       const style = row.findIndex((o) => o.id === bd.id) % 3
       const floors = bd.h >= 18 ? [6.55, 9.9] : [6.55]
@@ -734,7 +738,7 @@ export function buildMainStreet() {
         }
       }
     }
-    if ((bd.shop || bd.shutter) && bd.side !== 0) addShop(buf, glass, bd, trims)
+    if ((bd.shop || bd.shutter) && bd.side !== 0) addShop(buf, glass, bd, trims, glassA)
     if (bd.seg === 'A') dressAlley(buf, bd)
   }
 
@@ -881,8 +885,9 @@ export function buildMainStreet() {
 
   const geo = buf.geo()
   const glassGeo = glass.geo()
-  const tris = buf.p.length / 9 + glass.p.length / 9 + trims.length * 12
-  return { geo, glass: glassGeo, trims, tris }
+  const glassAGeo = glassA.geo()
+  const tris = buf.p.length / 9 + glass.p.length / 9 + glassA.p.length / 9 + trims.length * 12
+  return { geo, glass: glassGeo, glassA: glassAGeo, trims, tris }
 }
 
 let cache: ReturnType<typeof buildMainStreet> | null = null

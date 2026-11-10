@@ -31,7 +31,7 @@ export function DistrictAtmosphere() {
   return (
     <>
       <ambientLight ref={amb} intensity={0.1} color={districts.alley.ambient} />
-      <hemisphereLight ref={hemi} args={[districts.alley.hemiSky, '#050A14', 0.25]} />
+      <hemisphereLight ref={hemi} args={[districts.alley.hemiSky, '#07090D', 0.35]} />
     </>
   )
 }

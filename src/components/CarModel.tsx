@@ -60,7 +60,7 @@ export function CarModel() {
     const n = Math.hypot(_f.x, _f.z) || 1
     carSpotUniform.value.set(_p.x, _p.z, _f.x / n, _f.z / n)
     const inAlley = _p.z > 20 && _p.z < 70 && Math.abs(_p.x) < 18
-    beamMat.uniforms.uA.value = inAlley ? 0.03 : L.beam.a0
+    beamMat.uniforms.uA.value = inAlley ? 0 : L.beam.a0
     underMat.uniforms.uA.value = inAlley ? 0.06 : L.under.a
   })
   const h = L.waistH

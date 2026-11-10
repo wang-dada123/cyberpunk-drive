@@ -3,7 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { Text } from '@react-three/drei'
 import { CuboidCollider, RigidBody } from '@react-three/rapier'
 import * as THREE from 'three'
-import { glowAnchors, mainStreetDrive, solids, streetSigns, type StreetSign } from '../data/mainStreet'
+import { glowAnchors, MAIN_BUILDINGS, mainStreetDrive, solids, streetSigns, type StreetSign } from '../data/mainStreet'
 import { isMobile } from '../utils/isMobile'
 import { facadeEnvPMREM } from '../utils/look'
 import { getMainStreet, makeStreetMat, streetTime } from './mainStreetBuild'
@@ -232,6 +232,18 @@ export function MainStreet() {
     m.envMap = facadeEnvPMREM(gl)
     return m
   }, [gl])
+  const shopGlass = useMemo(() => new THREE.MeshStandardMaterial({
+    color: '#9FB8C8',
+    transparent: true,
+    opacity: 0.22,
+    roughness: 0.08,
+    metalness: 0,
+    emissive: '#000000',
+    emissiveIntensity: 0,
+    depthWrite: false,
+    envMap: facadeEnvPMREM(gl),
+    envMapIntensity: 0.6,
+  }), [gl])
   const glassMat = useMemo(() => new THREE.MeshStandardMaterial({
     color: '#b7d4ea',
     transparent: true,
@@ -249,8 +261,21 @@ export function MainStreet() {
     <group>
       <mesh geometry={built.geo} material={mat} frustumCulled={false} />
       <mesh geometry={built.glass} material={glassMat} frustumCulled={false} renderOrder={1} />
+      <mesh geometry={built.glassA} material={shopGlass} frustumCulled={false} renderOrder={1} />
       <SignBake signs={signs} />
       <FakeGlow />
+      {MAIN_BUILDINGS.filter((b) => b.seg === 'A' && b.shop).map((b) => (
+        <pointLight
+          key={b.id}
+          position={[b.face + b.side * 1.4, 2.1, (b.z0 + b.z1) / 2]}
+          color="#FFE6C4"
+          intensity={6}
+          distance={6}
+          decay={2}
+        />
+      ))}
+      <spotLight position={[-5.9, 5.2, 38]} intensity={7} angle={0.6} penumbra={0.6} distance={14} decay={2} color="#E8F4FF" target-position={[-5.9, 0.2, 38]} />
+      <spotLight position={[5.9, 5.2, 54]} intensity={7} angle={0.6} penumbra={0.6} distance={14} decay={2} color="#E8F4FF" target-position={[5.9, 0.2, 54]} />
       <RigidBody type="fixed" colliders={false}>
         {boxes.map((b) => <CuboidCollider key={b.id} args={b.h} position={b.c} />)}
       </RigidBody>
