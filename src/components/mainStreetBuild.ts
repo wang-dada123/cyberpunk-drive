@@ -247,7 +247,29 @@ float gRough, gMetal, gEnvK; vec3 gEmit;`)
     gMetal = 0.04 * wC + 0.86 * wM + mix(0.08, 0.4, mull) * wG;
     gEnvK = 0.2 * wC + mix(0.7, 0.12, seam) * wM + mix(mix(0.45, 0.22, curtain), 0.12, mull) * wG;
     // 住宅窗格（A）和幕墙大格（B）。亮度停在 Bloom 阈值下，墙本身不进光晕。
-    if (vRoof < 0.5 && y > 3.6 && vS0 < 1.5) {
+    if (vRoof < 0.5 && y > 4.3 && vS0 < 0.5) {
+      float floorH = 3.2;
+      float yRel = y - 4.3;
+      float fl = floor(yRel / floorH);
+      float ly = yRel - fl * floorH;
+      float period = 4.1;
+      float xw = vF.x;
+      float cell = floor(xw / period);
+      float lx = xw - cell * period;
+      float inGroup = step(lx, 2.35);
+      float col = floor(lx / 0.82);
+      float lxx = lx - col * 0.82;
+      float win = step(0.14, lxx) * step(lxx, 0.68);
+      float inY = step(0.62, ly) * step(ly, 2.45);
+      float keep = step(0.22, bh(vec2(cell, fl + vSeed)));
+      float pane = inGroup * win * inY * keep * step(0.0, yRel);
+      float warmW = step(0.88, bh(vec2(cell + 5.0, fl + vSeed)));
+      vec3 wc = mix(${lin('#E8F4FF')}, ${lin('#FFE6C4')}, warmW);
+      float on = step(0.42, bh(vec2(cell + 1.7, fl)));
+      gEmit = wc * pane * on * mix(0.42, 0.62, warmW);
+      base = mix(base, vec3(0.012, 0.018, 0.028), pane);
+    }
+    if (vRoof < 0.5 && y > 3.6 && vS0 > 0.5 && vS0 < 1.5) {
       float glassF = step(0.5, vS0);
       float bay = mix(1.55, 2.45, glassF);
       float winW = mix(1.18, 2.1, glassF);
@@ -334,7 +356,7 @@ float gRough, gMetal, gEnvK; vec3 gEmit;`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance = gEmit;')
       .replace('#include <lights_fragment_maps>', '#include <lights_fragment_maps>\nradiance *= gEnvK;')
   }
-  m.customProgramCacheKey = () => 'mainStreetV6'
+  m.customProgramCacheKey = () => 'mainStreetV7'
   return m
 }
 
@@ -374,8 +396,7 @@ function ring(buf: Buf, x: number, y: number, z: number, r: number, thick: numbe
   }
 }
 
-function spill(buf: Buf, x: number, z: number, seed: number) {
-  const s = 2.4
+function spill(buf: Buf, x: number, z: number, seed: number, s = 2.4) {
   const at: Attr = { ...A0(), zone: 9, seed }
   buf.quad(
     [x - s / 2, 0.07, z + s / 2], [x + s / 2, 0.07, z + s / 2], [x + s / 2, 0.07, z - s / 2], [x - s / 2, 0.07, z - s / 2],
@@ -385,7 +406,103 @@ function spill(buf: Buf, x: number, z: number, seed: number) {
 
 function umbrella(buf: Buf, x: number, z: number, seed: number) {
   cylY(buf, x, 1.15, z, 0.035, 2.15, 5, 8, seed)
-  prop(buf, x, 2.15, z, 1.35, 0.05, 1.35, 0.2, 1, seed)
+  const n = 8
+  const at: Attr = { ...A0(), zone: 1, seed, cx: x, cy: 2.05, cz: z }
+  const tip = [x, 2.28, z]
+  for (let i = 0; i < n; i++) {
+    const a0 = (i / n) * Math.PI * 2, a1 = ((i + 1) / n) * Math.PI * 2
+    buf.tri(tip, [x + Math.cos(a0) * 0.85, 2.02, z + Math.sin(a0) * 0.85], [x + Math.cos(a1) * 0.85, 2.02, z + Math.sin(a1) * 0.85], [0, 1, 0], [0.5, 1], [0, 0], [1, 0], at)
+  }
+}
+
+/** 只打扮 A 段：阳台、栏杆、晾衣、空调、雨棚、立管。B/C 不走这里。 */
+function dressAlley(buf: Buf, bd: Bld) {
+  if (bd.side === 0) return
+  const seed = hash(bd.id)
+  const side = bd.side
+  const face = bd.face
+  const mz = (bd.z0 + bd.z1) / 2
+  cylY(buf, face - side * 0.1, bd.h * 0.42, bd.z0 + 0.28, 0.05, bd.h * 0.78, 6, 1, seed)
+  cylY(buf, face - side * 0.1, bd.h * 0.38, bd.z1 - 0.28, 0.04, bd.h * 0.6, 6, 1, seed + 1)
+  {
+    const zL = bd.z0 + 0.2, zR = bd.z1 - 0.2
+    const xWall = face - side * 0.02
+    const xLip = face - side * 1.2
+    const at: Attr = { ...A0(), zone: 1, seed }
+    buf.quad([xWall, 3.28, zL], [xWall, 3.28, zR], [xLip, 2.68, zR], [xLip, 2.68, zL], [[0, 0], [1, 0], [1, 1], [0, 1]], at)
+  }
+  let n = 0
+  for (let y = 6.35; y < bd.h - 1.1; y += 3.1) {
+    const w = Math.min(bd.z1 - bd.z0 - 0.7, 4.6)
+    const px = face - side * 0.72
+    prop(buf, px, y, mz, 1.2, 0.09, w, 0, 8, seed + n)
+    const railX = px - side * 0.48
+    const posts = Math.max(6, Math.round(w / 0.28))
+    for (let p = 0; p < posts; p++) {
+      const oz = -w * 0.42 + (p / (posts - 1)) * w * 0.84
+      cylY(buf, railX, y + 0.36, mz + oz, 0.018, 0.62, 5, 1, seed + n * 17 + p)
+    }
+    beam(buf, [railX, y + 0.68, mz - w * 0.42], [railX, y + 0.68, mz + w * 0.42], 0.03, 1, seed)
+    beam(buf, [railX, y + 0.32, mz - w * 0.42], [railX, y + 0.32, mz + w * 0.42], 0.025, 1, seed)
+    // 窗框：成组的几何凹凸，不是贴图点子
+    for (const oz of [-1.15, 0, 1.15]) {
+      const wz = mz + oz
+      const wx = face - side * 0.06
+      prop(buf, wx, y + 1.15, wz - 0.38, 0.06, 1.35, 0.05, 0, 1, seed)
+      prop(buf, wx, y + 1.15, wz + 0.38, 0.06, 1.35, 0.05, 0, 1, seed)
+      prop(buf, wx, y + 1.8, wz, 0.06, 0.05, 0.8, 0, 1, seed)
+      prop(buf, wx, y + 0.5, wz, 0.06, 0.05, 0.8, 0, 1, seed)
+    }
+    const xh = px - side * 0.12
+    beam(buf, [xh, y + 0.5, mz - 1.05], [xh, y + 0.5, mz + 1.05], 0.025, 1, seed + 2)
+    const cloth: Attr = { ...A0(), zone: 5, seed: seed + n, cx: xh, cy: y, cz: mz }
+    buf.quad([xh, y + 0.45, mz - 0.85], [xh, y + 0.45, mz - 0.05], [xh, y - 0.45, mz - 0.05], [xh, y - 0.45, mz - 0.85], [[0, 0], [1, 0], [1, 1], [0, 1]], cloth)
+    buf.quad([xh, y + 0.45, mz + 0.2], [xh, y + 0.45, mz + 0.95], [xh, y - 0.1, mz + 0.95], [xh, y - 0.1, mz + 0.2], [[0, 0], [1, 0], [1, 1], [0, 1]], { ...cloth, seed: seed + 4 })
+    prop(buf, px + side * 0.2, y - 0.42, mz + w * 0.2, 0.42, 0.32, 0.5, 0, 1, seed + n)
+    cylY(buf, px - side * 0.02, y - 0.42, mz + w * 0.2, 0.11, 0.05, 7, 1, seed + 6)
+    if (n % 2 === 0) pot(buf, px - side * 0.08, mz - w * 0.3, seed + n, y + 0.08)
+    n++
+  }
+  if (bd.shop) {
+    const cx = face - side * 0.16
+    for (let k = 0; k < 5; k++) {
+      const zz = mz - 0.9 + k * 0.4
+      const at: Attr = { ...A0(), zone: 5, seed: seed + 20 + k }
+      buf.quad([cx, 2.15, zz], [cx, 2.15, zz + 0.22], [cx, 0.35, zz + 0.22], [cx, 0.35, zz], [[0, 0], [1, 0], [1, 1], [0, 1]], at)
+    }
+  }
+}
+
+function alleyClutter(buf: Buf) {
+  const bikes: Array<[number, number]> = [[-5.7, 35.2], [5.85, 42.5], [-5.65, 51.4], [5.75, 60.2]]
+  bikes.forEach(([x, z], i) => bike(buf, x, z, 80 + i))
+  const bins: Array<[number, number]> = [[-5.9, 39.2], [5.95, 48.6], [-5.85, 57.5]]
+  bins.forEach(([x, z], i) => {
+    cylY(buf, x, 0.42, z, 0.22, 0.7, 8, 8, 90 + i)
+    cylY(buf, x, 0.8, z, 0.24, 0.06, 8, 1, 90 + i)
+  })
+  // 跨街电线，几段折线，不是一根方梁
+  const wires: Array<[number, number, number]> = [[34.5, 9.2, 8.4], [43, 10.4, 9.1], [51.5, 8.8, 9.6], [60, 10.1, 8.6]]
+  wires.forEach(([z, yL, yR], i) => {
+    const n = 6
+    for (let k = 0; k < n; k++) {
+      const t0 = k / n, t1 = (k + 1) / n
+      const sag = Math.sin(Math.PI * (t0 + t1) * 0.5) * 0.85
+      const y0 = yL + (yR - yL) * t0 - sag
+      const y1 = yL + (yR - yL) * t1 - Math.sin(Math.PI * t1) * 0.85
+      beam(buf, [-6.2 + t0 * 12.4, y0, z], [-6.2 + t1 * 12.4, y1, z], 0.03, 1, 100 + i)
+    }
+  })
+  umbrella(buf, -5.55, 40.4, 70)
+  umbrella(buf, 5.7, 46.8, 71)
+  // 桌：薄面 + 四条圆柱腿
+  const tables: Array<[number, number]> = [[-5.6, 43.6], [5.7, 54.2]]
+  tables.forEach(([x, z], i) => {
+    prop(buf, x, 0.72, z, 0.7, 0.04, 0.7, 0.2, 1, 110 + i)
+    for (const [dx, dz] of [[-0.28, -0.28], [0.28, -0.28], [-0.28, 0.28], [0.28, 0.28]]) {
+      cylY(buf, x + dx, 0.35, z + dz, 0.02, 0.68, 5, 1, 110 + i)
+    }
+  })
 }
 
 function cylY(buf: Buf, x: number, y: number, z: number, r: number, h: number, n: number, zone: number, seed: number) {
@@ -521,15 +638,20 @@ function addShop(buf: Buf, glass: Buf, bd: Bld, trims: Trim[]) {
   if (!kind && bd.shutter) {
     prop(buf, xi, 1.1, zm, 0.3, 1.6, zw * 0.5, 0, 1, seed)
   }
-  if (bd.shop && bd.seg !== 'C') {
+  if (bd.shop && bd.seg === 'A') {
+    const boardW = bd.shop.word.length * 0.4 + (bd.shop.zh ? 0.9 : 0.45)
+    const x = bd.face - bd.side * (1.15 + bd.shop.word.length * 0.2)
+    prop(buf, x, 3.05, zm, boardW, 0.7, 0.12, 0, 1, seed)
+    prop(buf, x, 3.05, zm - 0.08, boardW * 0.92, 0.5, 0.03, 0, 11, seed)
+    spill(buf, bd.face - bd.side * 1.05, zm, seed + 11, 1.15)
+  } else if (bd.shop && bd.seg === 'B') {
     const boardW = Math.min(zw * 0.96, bd.shop.word.length * 0.34 + (bd.shop.zh ? 1.5 : 0.7))
     const y = shopSignY(bd)
     const x = shopSignX(bd)
-    const hh = bd.seg === 'B' ? 0.7 : 0.58
-    prop(buf, x, y, zm - 0.02, boardW, hh, 0.16, 0, 1, seed)
-    prop(buf, x, y, zm - 0.16, boardW * 0.9, hh * 0.68, 0.03, 0, 11, seed)
+    prop(buf, x, y, zm - 0.02, boardW, 0.7, 0.16, 0, 1, seed)
+    prop(buf, x, y, zm - 0.16, boardW * 0.9, 0.48, 0.03, 0, 11, seed)
   }
-  if (bd.shop) spill(buf, bd.face - bd.side * 1.45, zm, seed + 11)
+  if (bd.shop && bd.seg !== 'A') spill(buf, bd.face - bd.side * 1.45, zm, seed + 11)
   // 摊位雨棚
   if (bd.seg === 'C' && bd.shop) {
     const lipC = into(-1.05)
@@ -613,6 +735,7 @@ export function buildMainStreet() {
       }
     }
     if ((bd.shop || bd.shutter) && bd.side !== 0) addShop(buf, glass, bd, trims)
+    if (bd.seg === 'A') dressAlley(buf, bd)
   }
 
   // 蒸汽：6 片公告牌，绕面馆门口
@@ -650,24 +773,33 @@ export function buildMainStreet() {
     )
   }
 
-  // 人行天桥：薄桥面 + 下弦 + 斜腹杆，梁底 6.5m，不在镜头前堆一块板
+  // A 段天桥：薄桥面、下弦、斜腹杆、栏杆。不是一块板。
   {
     const z = BRIDGE_Z
-    const span = 14.2
-    prop(buf, 0, 6.62, z, span, 0.12, 1.15, 0, 1, 4)
-    prop(buf, 0, 6.05, z, span, 0.06, 0.06, 0, 1, 4)
-    for (let i = -6; i <= 6; i++) {
-      prop(buf, i * 1.05, 6.34, z, 0.05, 0.5, 0.05, i * 0.35, 1, 4)
+    const span = 13.2
+    const deckY = 6.55
+    prop(buf, 0, deckY, z, span, 0.1, 1.05, 0, 1, 4)
+    beam(buf, [-span / 2, deckY - 0.55, z], [span / 2, deckY - 0.55, z], 0.06, 1, 4)
+    const bays = 8
+    for (let i = 0; i <= bays; i++) {
+      const x = -span / 2 + (span * i) / bays
+      beam(buf, [x, deckY - 0.55, z], [x, deckY - 0.05, z], 0.045, 1, 4)
+      if (i < bays) {
+        const x2 = -span / 2 + (span * (i + 1)) / bays
+        if (i % 2 === 0) beam(buf, [x, deckY - 0.55, z], [x2, deckY - 0.05, z], 0.04, 1, 5)
+        else beam(buf, [x, deckY - 0.05, z], [x2, deckY - 0.55, z], 0.04, 1, 5)
+      }
     }
-    prop(buf, 0, 7.05, z - 0.52, span - 0.4, 0.05, 0.04, 0, 1, 4)
-    prop(buf, 0, 7.05, z + 0.52, span - 0.4, 0.05, 0.04, 0, 1, 4)
-    for (let i = -5; i <= 5; i += 2) {
-      prop(buf, i * 1.15, 6.85, z - 0.52, 0.04, 0.4, 0.04, 0, 1, 4)
-      prop(buf, i * 1.15, 6.85, z + 0.52, 0.04, 0.4, 0.04, 0, 1, 4)
+    for (const zz of [z - 0.48, z + 0.48]) {
+      beam(buf, [-span / 2 + 0.3, deckY + 0.55, zz], [span / 2 - 0.3, deckY + 0.55, zz], 0.035, 1, 4)
+      for (let i = 0; i <= 10; i++) {
+        const x = -span / 2 + 0.4 + (i * (span - 0.8)) / 10
+        cylY(buf, x, deckY + 0.28, zz, 0.02, 0.5, 4, 1, 6)
+      }
     }
-    prop(buf, 0, 7.2, z - 0.62, 3.6, 0.08, 0.05, 0, 1, 4)
-    trims.push({ p: [0, 5.95, z], s: [0.03, 0.03, span - 0.4], ry: Math.PI / 2, color: ICE, k: 1.45, fade: true })
+    trims.push({ p: [0, deckY - 0.62, z], s: [0.025, 0.025, span - 0.6], ry: Math.PI / 2, color: ICE, k: 1.45, fade: true })
   }
+  alleyClutter(buf)
 
   // 时钟柱：深钢柱身，没有青色包边。钟面是冷白发光板，数字贴在前面。
   prop(buf, CLOCK.x, 4, CLOCK.z, 0.72, 8, 0.72, 0, 8, 9)

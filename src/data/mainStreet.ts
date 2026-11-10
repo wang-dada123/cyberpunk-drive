@@ -159,13 +159,25 @@ export function streetSigns(): StreetSign[] {
   for (const bd of MAIN_BUILDINGS) {
     if (!bd.shop || bd.side === 0) continue
     const z = (bd.z0 + bd.z1) / 2
-    if (bd.seg === 'A' || bd.seg === 'B') {
+    if (bd.seg === 'A') {
+      // 字沿店面展开，略转向来车。宽方向顺着街，不横插进楼体。
+      const pull = 1.15 + bd.shop.word.length * 0.2
+      const x = bd.face - bd.side * pull
+      const y = 3.05
+      out.push({ text: bd.shop.word, font: 'en', p: [x, y, z - 0.22], ry: faceCam, size: 0.42, ice: false, vertical: false })
+      if (bd.shop.zh) out.push({ text: bd.shop.zh, font: 'zh', p: [x - bd.side * (0.55 + bd.shop.word.length * 0.22), y, z - 0.22], ry: faceCam, size: 0.34, ice: true, vertical: false })
+    } else if (bd.seg === 'B') {
       const x = shopSignX(bd)
       const y = shopSignY(bd)
-      const size = bd.seg === 'B' ? 0.46 : 0.4
-      out.push({ text: bd.shop.word, font: 'en', p: [x, y, z - 0.42], ry: faceCam, size, ice: false, vertical: false })
-      if (bd.shop.zh) out.push({ text: bd.shop.zh, font: 'zh', p: [x + bd.shop.word.length * 0.24, y, z - 0.42], ry: faceCam, size: 0.34, ice: true, vertical: false })
+      out.push({ text: bd.shop.word, font: 'en', p: [x, y, z - 0.42], ry: faceCam, size: 0.46, ice: false, vertical: false })
     }
+  }
+  const blades: Array<[string, number, number, number]> = [
+    ['REPAIR', 5.05, 7.4, 50.2],
+    ['TEA', -5.05, 7.15, 50.6],
+  ]
+  for (const [text, x, y, z] of blades) {
+    out.push({ text, font: 'en', p: [x, y, z], ry: faceCam, size: 0.32, ice: text === '24H', vertical: true })
   }
   out.push({ text: 'EAVES LANE', font: 'en', p: [0.85, 7.15, BRIDGE_Z - 0.95], ry: faceCam, size: 0.36, ice: false, vertical: false })
   out.push({ text: '雨巷', font: 'zh', p: [-1.7, 7.15, BRIDGE_Z - 0.95], ry: faceCam, size: 0.44, ice: true, vertical: false })

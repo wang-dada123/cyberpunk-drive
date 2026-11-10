@@ -1,5 +1,6 @@
 import { SPAWN } from '../data/mapLayout'
 import { expansionDriveStep } from './expansionDrive'
+import { SHOT_A, SHOT_A_CAM } from '../utils/quality'
 import { Suspense, useRef } from 'react'
 import { CarModel } from './CarModel'
 import { useFrame } from '@react-three/fiber'
@@ -94,6 +95,14 @@ export function Car() {
   const control = (rb: RapierRigidBody, dt: number) => {
 
     if (import.meta.env.DEV) (window as unknown as { __car?: RapierRigidBody }).__car = rb // 调试/截图用
+    if (SHOT_A) {
+      const yaw = Math.PI
+      rb.setTranslation({ x: 0, y: 0.85, z: SHOT_A_CAM.carZ }, true)
+      rb.setLinvel({ x: 0, y: 0, z: 0 }, true)
+      rb.setAngvel({ x: 0, y: 0, z: 0 }, true)
+      rb.setRotation({ x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) }, true)
+      return
+    }
     expansionDriveStep(rb, dt, rapierCtx.world)
     let t = rb.translation()
 

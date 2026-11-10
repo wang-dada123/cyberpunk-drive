@@ -5,6 +5,7 @@ import { carPose, carVisual } from './Car'
 import { tunnelRoof, garageLevels, spiralClip } from './Structures'
 import { TUNNEL, TUNNEL_R1, structCeil, garageLocal, GARAGE, SPIRAL } from '../data/mapLayout'
 import { isMobile } from '../utils/isMobile'
+import { SHOT_A, SHOT_A_CAM } from '../utils/quality'
 
 /**
  * v3 三档相机（C 键 / 手机右上按钮循环）：third 追尾 → first 引擎盖 → top 45° 俯视。
@@ -22,9 +23,9 @@ const MAX_ACCEL = 250         // 跟随点加速度上限 m/s²：正常行驶/�
 const K_VEL = 2.5             // 速度向量阻尼
 const K_ZOOM = 5              // 缩放阻尼
 // —— 第三人称 ——
-const T_BACK = 8, T_HEIGHT = 3, T_SPEED_EXTRA = 2, T_SPEED_REF = 30 // m, m, m, m/s
-const T_K_POS = 4, T_K_YAW = 2.5, T_FOV = 60
-const T_LOOK_AHEAD = 4, T_LOOK_H = 1.0
+const T_BACK = 6.2, T_HEIGHT = 2.25, T_SPEED_EXTRA = 2, T_SPEED_REF = 30 // m, m, m, m/s
+const T_K_POS = 4, T_K_YAW = 2.5, T_FOV = 58
+const T_LOOK_AHEAD = 5.5, T_LOOK_H = 1.45
 const T_MIN = 5, T_MAX = 14
 // —— 第一人称 ——
 const F_OFFSET = new THREE.Vector3(0, 1.1, -0.6) // 车局部：上 1.1m、前 0.6m
@@ -273,6 +274,15 @@ export function FollowCamera() {
       cam.position.copy(from.pos); cam.quaternion.copy(from.quat); camStats.nan++; inited = false
     }
     if (Math.abs(cam.fov - fov) > 0.01) { cam.fov = fov; cam.updateProjectionMatrix() }
+    if (SHOT_A) {
+      const c = SHOT_A_CAM
+      const narrow = window.innerWidth < 500
+      cam.position.set(c.pos[0], narrow ? 1.7 : c.pos[1], narrow ? 16.5 : c.pos[2])
+      cam.up.set(0, 1, 0)
+      cam.lookAt(c.look[0], narrow ? 3.6 : c.look[1], narrow ? 48 : c.look[2])
+      const fov = narrow ? 54 : c.fov
+      if (Math.abs(cam.fov - fov) > 0.01) { cam.fov = fov; cam.updateProjectionMatrix() }
+    }
   })
   return null
 }
